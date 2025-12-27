@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "angular2048": {
+    "app": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:class": {
@@ -81,10 +81,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "angular2048:build:production"
+              "buildTarget": "app:build:production"
             },
             "development": {
-              "buildTarget": "angular2048:build:development"
+              "buildTarget": "app:build:development"
             }
           },
           "defaultConfiguration": "development"
