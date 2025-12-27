@@ -1,11 +1,10 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { GamePageComponent } from './pages/game-page/game-page.component';
 
-import { routes } from './app.routes';
-
-export const appConfig: ApplicationConfig = {
+export const appConfig = {
   providers: [
-    provideBrowserGlobalErrorListeners(),
-    provideRouter(routes)
+    provideRouter([
+      { path: '', component: GamePageComponent },
+    ])
   ]
 };
