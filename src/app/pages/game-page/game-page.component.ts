@@ -4,10 +4,9 @@ import { GameBoardComponent } from '../../components/game-board/game-board.compo
 
 @Component({
   selector: 'app-game-page',
+  standalone: true,
   imports: [NavbarComponent, GameBoardComponent],
   templateUrl: './game-page.component.html',
-  styleUrl: './game-page.component.css',
+  styleUrls: ['./game-page.component.css'],
 })
-export class GamePageComponent {
-
-}
+export class GamePageComponent {}

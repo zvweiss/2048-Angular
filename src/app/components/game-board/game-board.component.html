@@ -1,1 +1,7 @@
-<p>game-board works!</p>
+<div class="game-board">
+  <div class="board-row" *ngFor="let row of board">
+    <div class="tile-container" *ngFor="let cell of row">
+      <div class="tile"></div>
+    </div>
+  </div>
+</div>

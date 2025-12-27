@@ -1,0 +1,32 @@
+.game-board {
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 10px;
+  background: #bbada0; /* board background */
+  padding: 10px;
+  border-radius: 10px;
+  width: 360px;
+  height: 360px;
+  margin: 0 auto;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.tile-container {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile {
+  width: 100%;
+  height: 100%;
+  background: #eee4da;
+  border-radius: 5px;
+}
