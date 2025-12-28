@@ -6,7 +6,7 @@
   "start": "npx ng serve",
   "build": "npx ng build --base-href=/2048-Angular/",
   "build:prod": "npx ng build --configuration production --base-href=/2048-Angular/",
-  "deploy": "npm run build:prod && gh-pages -d dist/2048-angular/browser",
+  "deploy": "npm run build:prod && touch dist/2048-angular/browser/.nojekyll && npx gh-pages -d dist/2048-angular/browser --dotfiles",
   "watch": "npx ng build --watch --configuration development",
   "kill-port": "kill-port 4200",
   "test": "npx ng test"
