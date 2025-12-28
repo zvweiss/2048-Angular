@@ -1,3 +1,10 @@
 <div class="score-placeholder">Score: 0</div>
 <app-game-board></app-game-board>
-<div class="controls-placeholder">Controls here</div>
+<div class="controls">
+  <button (click)="move('up')">⬆️</button>
+  <div>
+    <button (click)="move('left')">⬅️</button>
+    <button (click)="move('down')">⬇️</button>
+    <button (click)="move('right')">➡️</button>
+  </div>
+</div>

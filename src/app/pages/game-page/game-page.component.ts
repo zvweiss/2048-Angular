@@ -9,4 +9,9 @@ import { GameBoardComponent } from '../../components/game-board/game-board.compo
   templateUrl: './game-page.component.html',
   styleUrls: ['./game-page.component.css'],
 })
-export class GamePageComponent {}
+export class GamePageComponent {
+  move(direction: 'up' | 'down' | 'left' | 'right') {
+    console.log(`Move: ${direction}`);
+    // Call game logic here later
+  }
+}
