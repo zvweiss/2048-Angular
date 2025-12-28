@@ -5,7 +5,7 @@ import { GameBoardComponent } from '../../components/game-board/game-board.compo
 @Component({
   selector: 'app-game-page',
   standalone: true,
-  imports: [NavbarComponent, GameBoardComponent],
+  imports: [GameBoardComponent],
   templateUrl: './game-page.component.html',
   styleUrls: ['./game-page.component.css'],
 })
