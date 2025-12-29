@@ -1,22 +1,22 @@
-<div class="score-placeholder">
-  Score: 0
-</div>
+<app-navbar />
 
-<app-game-board></app-game-board>
+<div class="game-container">
+  <h2>Score: {{ score$ | async }}</h2>
 
-<div class="controls">
-  <button (click)="move('up')">⬆️</button>
-  <div>
-    <button (click)="move('left')">⬅️</button>
-    <button (click)="move('down')">⬇️</button>
-    <button (click)="move('right')">➡️</button>
+  <app-game-board />
+
+  <div class="controls">
+    <button (click)="move('up')">⬆️</button>
+    <div>
+      <button (click)="move('left')">⬅️</button>
+      <button (click)="move('down')">⬇️</button>
+      <button (click)="move('right')">➡️</button>
+    </div>
   </div>
-</div>
 
-<div class="debug-toggle-container">
-  <button (click)="toggleDebug()">
-    {{ debugVisible ? 'Hide Debug Panel' : 'Show Debug Panel' }}
+  <button class="debug-toggle" (click)="toggleDebug()">
+    {{ debugVisible ? 'Hide' : 'Show' }} Debug Panel
   </button>
-</div>
 
-<app-debug-panel *ngIf="debugVisible" />
+  <app-debug-panel *ngIf="debugVisible" />
+</div>

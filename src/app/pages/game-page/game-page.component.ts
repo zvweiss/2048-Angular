@@ -1,26 +1,33 @@
-import { Component, ViewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
+import { Component } from '@angular/core';
+import { AsyncPipe, NgIf } from '@angular/common';
+import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
-import { DebugService } from '../../services/debug.service';
+import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
+import { GameService } from '../../services/game.service';
 
 @Component({
   selector: 'app-game-page',
   standalone: true,
-  imports: [GameBoardComponent, DebugPanelComponent, CommonModule],
+  imports: [NavbarComponent,GameBoardComponent, DebugPanelComponent, AsyncPipe, NgIf],
   templateUrl: './game-page.component.html',
   styleUrls: ['./game-page.component.css'],
 })
 export class GamePageComponent {
   debugVisible = false;
 
-  constructor(private debug: DebugService) {}
+  constructor(public game: GameService) {
+    this.game.startNewGame(); // ← Make sure board is initialized!
+  }
 
-  move(direction: 'up' | 'down' | 'left' | 'right') {
-    this.debug.log(`Move: ${direction}`);
+  get score$() {
+    return this.game.score$;
   }
 
   toggleDebug() {
     this.debugVisible = !this.debugVisible;
+  }
+
+  move(direction: 'up' | 'down' | 'left' | 'right') {
+    this.game.move(direction);
   }
 }

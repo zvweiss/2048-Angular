@@ -5,9 +5,7 @@ import { DebugService } from './debug.service';
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Board = number[][];
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class GameService {
   private readonly size = 4;
 
@@ -17,10 +15,12 @@ export class GameService {
   private scoreSubject = new BehaviorSubject<number>(0);
   score$ = this.scoreSubject.asObservable();
 
-  constructor(private debug: DebugService) {}
+  constructor(private debug: DebugService) {
+    this.debug.log('GameService initialized');
+  }
 
   startNewGame(): void {
-    this.debug.log('New game started');
+    this.debug.log('Starting new game...');
     const board = this.createEmptyBoard();
     this.spawnTile(board);
     this.spawnTile(board);
@@ -29,29 +29,25 @@ export class GameService {
   }
 
   move(direction: Direction): void {
-    // TODO: slide + merge tiles
-    // TODO: spawn new tile if moved
-    // TODO: update board and score
+    this.debug.log(`Move: ${direction}`);
+    // Game logic to be implemented
   }
 
   private createEmptyBoard(): Board {
-    return Array.from({ length: this.size }, () =>
-      Array(this.size).fill(0)
-    );
+    return Array.from({ length: this.size }, () => Array(this.size).fill(0));
   }
 
   private spawnTile(board: Board): void {
+    this.debug.log("Spawn a Tile if board is not full")
     const emptyCells = [];
-
-    for (let row = 0; row < this.size; row++) {
-      for (let col = 0; col < this.size; col++) {
-        if (board[row][col] === 0) emptyCells.push({ row, col });
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if (board[r][c] === 0) emptyCells.push({ r, c });
       }
     }
 
     if (emptyCells.length === 0) return;
-
-    const { row, col } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-    board[row][col] = Math.random() < 0.9 ? 2 : 4;
+    const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    board[r][c] = Math.random() < 0.9 ? 2 : 4;
   }
 }
