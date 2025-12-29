@@ -1,5 +1,9 @@
-<div class="score-placeholder">Score: 0</div>
+<div class="score-placeholder">
+  Score: 0
+</div>
+
 <app-game-board></app-game-board>
+
 <div class="controls">
   <button (click)="move('up')">⬆️</button>
   <div>
@@ -8,3 +12,11 @@
     <button (click)="move('right')">➡️</button>
   </div>
 </div>
+
+<div class="debug-toggle-container">
+  <button (click)="toggleDebug()">
+    {{ debugVisible ? 'Hide Debug Panel' : 'Show Debug Panel' }}
+  </button>
+</div>
+
+<app-debug-panel *ngIf="debugVisible" />
