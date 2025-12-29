@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
-import { NgIf, NgFor, CommonModule } from '@angular/common';
+// src/app/components/debug-panel/debug-panel.component.ts
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { DebugService } from '../../services/debug.service';
 
 @Component({
@@ -9,20 +10,16 @@ import { DebugService } from '../../services/debug.service';
   templateUrl: './debug-panel.component.html',
   styleUrls: ['./debug-panel.component.css'],
 })
-export class DebugPanelComponent {
+export class DebugPanelComponent implements OnInit {
   messages: string[] = [];
 
-  constructor(public debug: DebugService) {}
+  constructor(private debug: DebugService) {}
 
-  // clearLogs() {
-  //   this.debug.clear();
-  // }
-
-  log(message: string) {
-    this.messages.push(message);
+  ngOnInit(): void {
+    this.debug.logs$.subscribe((msgs) => (this.messages = msgs));
   }
 
-  clear() {
-    this.messages = [];
+  clearLogs(): void {
+    this.debug.clear();
   }
 }

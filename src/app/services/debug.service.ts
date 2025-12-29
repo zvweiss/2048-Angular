@@ -1,21 +1,19 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class DebugService {
-  private _logs = signal<string[]>([]);
-
-  get logs() {
-    return this._logs();
-  }
+  private logsSubject = new BehaviorSubject<string[]>([]);
+  logs$ = this.logsSubject.asObservable();
 
   log(message: string) {
     const timestamp = new Date().toISOString();
-    this._logs.update((logs) => [...logs, `[${timestamp}] ${message}`]);
+    const newLog = `[${timestamp}] ${message}`;
+    const current = this.logsSubject.value;
+    this.logsSubject.next([...current, newLog]);
   }
 
   clear() {
-    this._logs.set([]);
+    this.logsSubject.next([]);
   }
 }
