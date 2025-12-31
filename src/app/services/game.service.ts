@@ -1,9 +1,8 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { DebugService } from './debug.service';
-
-export type Direction = 'up' | 'down' | 'left' | 'right';
-export type Board = number[][];
+import { Board } from '../types/board';
+import { Direction } from '../types/direction';
 
 @Injectable({ providedIn: 'root' })
 export class GameService {
