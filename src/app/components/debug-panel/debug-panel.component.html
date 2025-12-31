@@ -2,10 +2,12 @@
 <div class="debug-panel">
   <h3>Debug Panel</h3>
   <button (click)="clearLogs()">Clear Logs</button>
-  <div *ngFor="let msg of messages" class="log-entry">
+  <!-- <div *ngFor="let msg of messages" class="log-entry">
     {{ msg }}
-  </div>
-   <!-- <ul>
-    <li *ngFor="let msg of messages | async">{{ msg }}</li>
-  </ul> -->
+  </div> -->
+
+<div *ngFor="let msg of messages">
+  <pre>{{ msg }}</pre>
+</div>
+
 </div>

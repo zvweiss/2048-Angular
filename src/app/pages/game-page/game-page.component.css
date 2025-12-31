@@ -23,6 +23,25 @@
   cursor: pointer;
 }
 
+/* .controls {
+  text-align: center;
+  margin-top: 20px;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #8f7a66;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #776e65;
+} */
+
 .debug-toggle {
   margin-top: 1rem;
   background-color: green;
