@@ -18,6 +18,7 @@ export class GamePageComponent {
 
   constructor(public game: GameService) {
     this.game.startNewGame(); // ← Make sure board is initialized!
+    //this.game = game;
   }
 
   get score$() {
