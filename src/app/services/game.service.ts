@@ -11,12 +11,12 @@ export class GameService {
   private boardSubject = new BehaviorSubject<Board>(this.createEmptyBoard());
   board$ = this.boardSubject.asObservable();
 
+  private score = 0;
   private scoreSubject = new BehaviorSubject<number>(0);
   score$ = this.scoreSubject.asObservable();
 
   constructor(private debug: DebugService) {
     this.debug.log('GameService initialized');
-    //this.startNewGame();
   }
 
   startNewGame(): void {
@@ -63,7 +63,9 @@ export class GameService {
       if (changed) moved = true;
     }
 
-    this.debug.log('newBoard after compression:\n' + this.formatBoard(newBoard));
+    this.debug.log(
+      'newBoard after compression:\n' + this.formatBoard(newBoard)
+    );
 
     // Step 3: Rotate back to original orientation
     let finalBoard: Board;
@@ -83,7 +85,8 @@ export class GameService {
     }
 
     this.debug.log(
-      `Final board after move: ${direction.toUpperCase()}\n` + this.formatBoard(finalBoard)
+      `Final board after move: ${direction.toUpperCase()}\n` +
+        this.formatBoard(finalBoard)
     );
 
     // Step 4: If moved, spawn tile and update
@@ -93,24 +96,6 @@ export class GameService {
     } else {
       this.debug.log('No move made.');
     }
-  }
-
-  private slideAndMerge(row: number[]): [number[], number] {
-    const filtered = row.filter((v) => v !== 0);
-    const merged: number[] = [];
-    let score = 0;
-    for (let i = 0; i < filtered.length; i++) {
-      if (filtered[i] === filtered[i + 1]) {
-        const sum = filtered[i] * 2;
-        merged.push(sum);
-        score += sum;
-        i++;
-      } else {
-        merged.push(filtered[i]);
-      }
-    }
-    while (merged.length < this.size) merged.push(0);
-    return [merged, score];
   }
 
   private createEmptyBoard(): Board {
@@ -139,10 +124,6 @@ export class GameService {
     return board[0].map((_, i) => board.map((row) => row[this.size - 1 - i]));
   }
 
-  // private rotate180(board: Board): Board {
-  //   return board.map(row => [...row].reverse()).reverse();
-  // }
-
   private rotateClockwise(board: Board): Board {
     return board[0].map((_, i) => board.map((row) => row[i]).reverse());
   }
@@ -164,6 +145,7 @@ export class GameService {
     while (i < filtered.length) {
       if (filtered[i] === filtered[i + 1]) {
         merged.push(filtered[i] * 2);
+        this.updateScore(this.score + filtered[i] * 2);
         i += 2;
         changed = true;
       } else {
@@ -183,9 +165,25 @@ export class GameService {
     return [merged, changed];
   }
 
+  updateScore(newScore: number) {
+    this.score = newScore
+    this.scoreSubject.next(newScore);
+    this.debug.log("Update score: " + newScore)
+  }
+
+  getCurrentScore(): number {
+    return this.scoreSubject.value;
+  }
+
+  resetScore() {
+    this.scoreSubject.next(0);
+  }
+
   private formatBoard(board: Board): string {
     return board
-      .map((row) => row.map((cell) => (cell === 0 ? '.' : cell.toString())).join('\t'))
+      .map((row) =>
+        row.map((cell) => (cell === 0 ? '.' : cell.toString())).join('\t')
+      )
       .join('\n');
   }
 }
