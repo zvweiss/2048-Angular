@@ -4,7 +4,7 @@ import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
 import { GameService } from '../../services/game.service';
-import { Direction } from '..//../types/direction';
+import { Direction } from '../../types/direction';
 
 @Component({
   selector: 'app-game-page',

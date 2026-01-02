@@ -28,44 +28,6 @@ export class GameService {
     this.scoreSubject.next(0);
   }
 
-  // move(direction: Direction): void {
-  //   this.debug.log(`Move: ${direction}`);
-  //   const board = this.boardSubject.value.map(row => [...row]);
-  //   this.debug.log('Original board:\n' + this.formatBoard(board));
-
-  //   let rotated: Board = board;
-  //   if (direction === 'up') rotated = this.rotateLeft(board);
-  //   if (direction === 'down') rotated = this.rotateRight(board);
-  //   if (direction === 'right') rotated = this.rotate180(board);
-  //   this.debug.log('After rotation board:\n' + this.formatBoard(board));
-
-  //   let moved = false;
-  //   let scoreGained = 0;
-  //   const newBoard: Board = rotated.map(row => {
-  //     const [compressed, gained] = this.slideAndMerge(row);
-  //     if (compressed.toString() !== row.toString()) moved = true;
-  //     scoreGained += gained;
-  //     return compressed;
-  //   });
-  //   this.debug.log('newBoard after compression:\n' + this.formatBoard(newBoard));
-
-  //   let finalBoard: Board = newBoard;
-  //   if (direction === 'up') finalBoard = this.rotateRight(newBoard);
-  //   if (direction === 'down') finalBoard = this.rotateLeft(newBoard);
-  //   if (direction === 'right') finalBoard = this.rotate180(newBoard);
-
-  //   this.debug.log('Final board after move: ' + direction.toUpperCase() +'\n' + this.formatBoard(finalBoard));
-
-  //   if (!moved) {
-  //     this.debug.log('No move made.');
-  //     return;
-  //   }
-
-  //   this.spawnTile(finalBoard);
-  //   this.boardSubject.next(finalBoard);
-  //   this.scoreSubject.next(this.scoreSubject.value + scoreGained);
-  // }
-
   move(direction: Direction): void {
     this.debug.log(`Move: ${direction.toUpperCase()}`);
     const originalBoard = this.boardSubject.value;
