@@ -15,8 +15,22 @@ export class GameService {
   private scoreSubject = new BehaviorSubject<number>(0);
   score$ = this.scoreSubject.asObservable();
 
+  bestScore = this.getBestScore();
+  private bestScoreSubject = new BehaviorSubject<number>(this.bestScore);
+  bestScore$ = this.bestScoreSubject.asObservable();
+
   constructor(private debug: DebugService) {
     this.debug.log('GameService initialized');
+    this.bestScore = this.getBestScore();
+    this.debug.log('BestScore: ' + this.bestScore);
+  }
+
+  saveBestScore(score: number): void {
+    localStorage.setItem('bestScore', JSON.stringify(score));
+  }
+
+  getBestScore(): number {
+    return JSON.parse(localStorage.getItem('bestScore') || '0');
   }
 
   startNewGame(): void {
@@ -166,9 +180,14 @@ export class GameService {
   }
 
   updateScore(newScore: number) {
-    this.score = newScore
+    this.score = newScore;
+    this.debug.log('Update score: ' + newScore);
     this.scoreSubject.next(newScore);
-    this.debug.log("Update score: " + newScore)
+    if (newScore > this.bestScore) {
+      this.debug.log('Update best score: ' + newScore);
+      this.saveBestScore(newScore);
+      this.bestScoreSubject.next(newScore);
+    }
   }
 
   getCurrentScore(): number {

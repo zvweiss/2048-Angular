@@ -25,6 +25,10 @@ export class GamePageComponent {
     return this.game.score$;
   }
 
+get bestScore$() {
+  return this.game.bestScore$; // <-- return the observable, not the raw number
+}
+
   toggleDebug() {
     this.debugVisible = !this.debugVisible;
   }

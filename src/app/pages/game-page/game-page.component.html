@@ -1,25 +1,36 @@
 <app-navbar />
 
 <div class="game-container">
-  <h2>Score: {{ score$ | async }}</h2>
-
-  <app-game-board />
-
-  <div class="controls">
-    <button (click)="move('up')">⬆️</button>
-    <div>
-      <button (click)="move('left')">⬅️</button>
-      <button (click)="move('down')">⬇️</button>
-      <button (click)="move('right')">➡️</button>
+  <div class="page-container">
+    <div class="score-container">
+      <div class="score-box">
+        <div>Score</div>
+        <div>{{ score$ | async }}</div>
+      </div>
+      <div class="score-box">
+        <div>Best</div>
+        <div>{{ bestScore$ | async }}</div>
+      </div>
     </div>
+
+    <app-game-board />
+
     <div class="controls">
-      <button (click)="restart()">🔄</button>
+      <button (click)="move('up')">⬆️</button>
+      <div>
+        <button (click)="move('left')">⬅️</button>
+        <button (click)="move('down')">⬇️</button>
+        <button (click)="move('right')">➡️</button>
+      </div>
+      <div class="controls">
+        <button (click)="restart()">🔄</button>
+      </div>
     </div>
+
+    <button class="debug-toggle" (click)="toggleDebug()">
+      {{ debugVisible ? "Hide" : "Show" }} Debug Panel
+    </button>
+
+    <app-debug-panel *ngIf="debugVisible" />
   </div>
-
-  <button class="debug-toggle" (click)="toggleDebug()">
-    {{ debugVisible ? 'Hide' : 'Show' }} Debug Panel
-  </button>
-
-  <app-debug-panel *ngIf="debugVisible" />
 </div>
