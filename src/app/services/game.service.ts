@@ -15,9 +15,20 @@ export class GameService {
   private scoreSubject = new BehaviorSubject<number>(0);
   score$ = this.scoreSubject.asObservable();
 
-  bestScore = this.getBestScore();
+  bestScore = 0;
   private bestScoreSubject = new BehaviorSubject<number>(this.bestScore);
   bestScore$ = this.bestScoreSubject.asObservable();
+
+  private undoAvailableSubject = new BehaviorSubject<boolean>(false);
+  undoAvailable$ = this.undoAvailableSubject.asObservable();
+
+  //private history: { board: Board; score: number }[] = [];
+  private previousState: { board: Board; score: number } | null = null;
+  private undoEnabledSubject = new BehaviorSubject<boolean>(true);
+  undoEnabled$ = this.undoEnabledSubject.asObservable();
+
+  private previousBoard: Board | null = null;
+  private previousScore = 0;
 
   constructor(private debug: DebugService) {
     this.debug.log('GameService initialized');
@@ -40,6 +51,14 @@ export class GameService {
     this.spawnTile(board);
     this.boardSubject.next(board);
     this.scoreSubject.next(0);
+
+    // Fetch and emit best score again
+    this.bestScore = this.getBestScore();
+    this.bestScoreSubject.next(this.bestScore);
+
+    // Clear undo history
+    this.previousState = null;
+    this.updateUndoAvailability();
   }
 
   move(direction: Direction): void {
@@ -49,7 +68,6 @@ export class GameService {
 
     let rotatedBoard: Board;
 
-    // Step 1: Rotate board based on direction
     switch (direction) {
       case 'up':
         rotatedBoard = this.rotateCounterClockwise(originalBoard);
@@ -60,14 +78,11 @@ export class GameService {
       case 'right':
         rotatedBoard = this.rotate180(originalBoard);
         break;
-      default: // 'left'
+      default:
         rotatedBoard = originalBoard.map((row) => [...row]);
         break;
     }
 
-    this.debug.log('After rotation board:\n' + this.formatBoard(rotatedBoard));
-
-    // Step 2: Slide and merge
     const newBoard: Board = [];
     let moved = false;
 
@@ -77,11 +92,6 @@ export class GameService {
       if (changed) moved = true;
     }
 
-    this.debug.log(
-      'newBoard after compression:\n' + this.formatBoard(newBoard)
-    );
-
-    // Step 3: Rotate back to original orientation
     let finalBoard: Board;
     switch (direction) {
       case 'up':
@@ -93,20 +103,21 @@ export class GameService {
       case 'right':
         finalBoard = this.rotate180(newBoard);
         break;
-      default: // 'left'
+      default:
         finalBoard = newBoard;
         break;
     }
 
-    this.debug.log(
-      `Final board after move: ${direction.toUpperCase()}\n` +
-        this.formatBoard(finalBoard)
-    );
-
-    // Step 4: If moved, spawn tile and update
     if (moved) {
+      // Save a single-level undo snapshot
+      this.previousState = {
+        board: originalBoard.map((row) => [...row]), // Deep copy
+        score: this.score,
+      };
+
       this.spawnTile(finalBoard);
       this.boardSubject.next(finalBoard);
+      this.updateUndoAvailability();
     } else {
       this.debug.log('No move made.');
     }
@@ -128,6 +139,24 @@ export class GameService {
     board[r][c] = Math.random() < 0.9 ? 2 : 4;
     this.debug.log(`Spawn tile at row ${r}, col ${c}, value ${board[r][c]}`);
     this.debug.log('Board after Spawn:\n' + this.formatBoard(board));
+  }
+
+  private updateUndoAvailability(): void {
+    this.undoAvailableSubject.next(this.previousState !== null);
+  }
+
+  undo(): void {
+    if (!this.undoEnabledSubject.value || !this.previousState) return;
+
+    this.boardSubject.next(this.previousState.board);
+    this.scoreSubject.next(this.previousState.score);
+    this.previousState = null;
+    this.updateUndoAvailability();
+  }
+
+  toggleUndoEnabled(): void {
+    const current = this.undoEnabledSubject.value;
+    this.undoEnabledSubject.next(!current);
   }
 
   private rotateLeft(board: Board): Board {
@@ -180,15 +209,15 @@ export class GameService {
   }
 
   updateScore(newScore: number) {
-    this.score = newScore;
-    this.debug.log('Update score: ' + newScore);
-    this.scoreSubject.next(newScore);
-    if (newScore > this.bestScore) {
-      this.debug.log('Update best score: ' + newScore);
-      this.saveBestScore(newScore);
-      this.bestScoreSubject.next(newScore);
-    }
+  this.score = newScore;
+  this.scoreSubject.next(newScore);
+
+  if (newScore > this.bestScore) {
+    this.bestScore = newScore;
+    this.saveBestScore(newScore);
+    this.bestScoreSubject.next(newScore); // ← emit the updated value!
   }
+}
 
   getCurrentScore(): number {
     return this.scoreSubject.value;

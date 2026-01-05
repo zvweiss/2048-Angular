@@ -13,7 +13,8 @@
       </div>
     </div>
 
-    <app-game-board />
+    <!-- <app-game-board [board]="board$ | async || []" /> -->
+     <app-game-board />
 
     <div class="controls">
       <button (click)="move('up')">⬆️</button>
@@ -22,9 +23,14 @@
         <button (click)="move('down')">⬇️</button>
         <button (click)="move('right')">➡️</button>
       </div>
-      <div class="controls">
+    </div>
+    <div class="controls">
         <button (click)="restart()">🔄</button>
-      </div>
+        <button (click)="toggleUndoEnabled()">
+          {{ (undoEnabled$ | async) ? "Disable Undo" : "Enable Undo" }}
+        </button>
+        <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">↩️
+        </button>
     </div>
 
     <button class="debug-toggle" (click)="toggleDebug()">
