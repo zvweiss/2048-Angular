@@ -1,6 +1,10 @@
-<div class="board">
-  <div *ngFor="let row of board$ | async" class="row">
-    <div *ngFor="let cell of row" class="tile">
+<div class="board" *ngIf="board$ | async as board">
+  <div class="row" *ngFor="let row of board">
+    <div
+      class="tile"
+      *ngFor="let cell of row"
+      [ngClass]="getTileClass(cell)"
+    >
       <span *ngIf="cell !== 0">{{ cell }}</span>
     </div>
   </div>

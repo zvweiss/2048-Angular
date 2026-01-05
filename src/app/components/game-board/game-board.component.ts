@@ -2,6 +2,8 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { AsyncPipe } from '@angular/common';
+import { Observable } from 'rxjs';
+import { Board } from '../../types/board';
 
 @Component({
   selector: 'app-game-board',
@@ -11,9 +13,13 @@ import { AsyncPipe } from '@angular/common';
   styleUrls: ['./game-board.component.css'],
 })
 export class GameBoardComponent {
-  board$;
+  board$: Observable<Board>;
 
   constructor(private game: GameService) {
-    this.board$ = game.board$;
+    this.board$ = this.game.board$;
+  }
+
+  getTileClass(value: number): string {
+    return value === 0 ? 'tile tile-0' : 'tile tile-' + value;
   }
 }

@@ -2,11 +2,12 @@
   display: grid;
   grid-template-rows: repeat(4, 1fr);
   gap: 10px;
-  width: 320px;
-  margin: 0 auto;
   background-color: #bbada0;
   padding: 10px;
   border-radius: 10px;
+  width: fit-content;
+  margin: auto;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 .row {
@@ -16,13 +17,68 @@
 }
 
 .tile {
-  width: 70px;
-  height: 70px;
-  background-color: #eee4da;
+  width: 60px;
+  height: 60px;
   font-size: 24px;
   font-weight: bold;
-  text-align: center;
-  line-height: 70px;
-  border-radius: 5px;
   color: #776e65;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #eee4da;
+  border-radius: 5px;
+}
+
+/* Color themes */
+.tile-2 {
+  background-color: #eee4da;
+}
+
+.tile-4 {
+  background-color: #ede0c8;
+}
+
+.tile-8 {
+  background-color: #f2b179;
+  color: #f9f6f2;
+}
+
+.tile-16 {
+  background-color: #f59563;
+  color: #f9f6f2;
+}
+
+.tile-32 {
+  background-color: #f67c5f;
+  color: #f9f6f2;
+}
+
+.tile-64 {
+  background-color: #f65e3b;
+  color: #f9f6f2;
+}
+
+.tile-128 {
+  background-color: #edcf72;
+  color: #f9f6f2;
+}
+
+.tile-256 {
+  background-color: #edcc61;
+  color: #f9f6f2;
+}
+
+.tile-512 {
+  background-color: #edc850;
+  color: #f9f6f2;
+}
+
+.tile-1024 {
+  background-color: #edc53f;
+  color: #f9f6f2;
+}
+
+.tile-2048 {                           
+  background-color: #edc22e;
+  color: #f9f6f2;
 }
