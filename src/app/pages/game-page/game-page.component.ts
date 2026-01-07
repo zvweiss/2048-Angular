@@ -1,84 +1,79 @@
-import { Component, HostListener } from '@angular/core';
-import { AsyncPipe, NgIf } from '@angular/common';
-import { NavbarComponent } from '../../components/navbar/navbar.component';
+import { Component, HostListener, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
-import { GameService } from '../../services/game.service';
+import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { Direction } from '../../types/direction';
+import { GameService } from '../../services/game.service';
+import { AsyncPipe, NgIf } from '@angular/common';
 
 @Component({
   selector: 'app-game-page',
   standalone: true,
-  imports: [
-    NavbarComponent,
-    GameBoardComponent,
-    DebugPanelComponent,
-    AsyncPipe,
-    NgIf,
-  ],
+  imports: [CommonModule, AsyncPipe, NgIf, GameBoardComponent, DebugPanelComponent, NavbarComponent],
   templateUrl: './game-page.component.html',
-  styleUrls: ['./game-page.component.css'],
+  styleUrl: './game-page.component.css',
 })
 export class GamePageComponent {
-  debugVisible = false;
+  private game = inject(GameService);
 
-  constructor(public game: GameService) {
-    this.game.startNewGame(); // Ensure the game starts
+  board$ = this.game.board$;
+  score$ = this.game.score$;
+  bestScore$ = this.game.bestScore$;
+  undoEnabled$ = this.game.undoEnabled$;
+  undoAvailable$ = this.game.undoAvailable$;
+  debugVisible = this.game.debugVisible;
+  win$ = this.game.win$;
+  gameOver$ = this.game.gameOver$;
+
+  ngOnInit(): void {
+  this.game.startNewGame(); // This ensures the initial tiles are spawned
+}
+
+  move(direction: Direction) {
+    this.game.move(direction);
   }
 
-  get score$() {
-    return this.game.score$;
-  }
-
-  get bestScore$() {
-    return this.game.bestScore$;
-  }
-
-  get board$() {
-    return this.game.board$;
-  }
-
-  get undoEnabled$() {
-    return this.game.undoEnabled$;
+  restart() {
+    this.game.restart();
   }
 
   toggleUndoEnabled() {
     this.game.toggleUndoEnabled();
   }
 
-  get undoAvailable$() {
-    return this.game.undoAvailable$;
-  }
-
-  toggleDebug() {
-    this.debugVisible = !this.debugVisible;
-  }
-
-  move(direction: Direction) {
-    this.game.move(direction);
-  }
-
-  restart(): void {
-    this.game.startNewGame();
-  }
-
-  undo(): void {
+  undo() {
     this.game.undo();
   }
 
-  @HostListener('window:keydown', ['$event'])
-  handleKeyDown(event: KeyboardEvent): void {
-    const keyMap: { [key: string]: Direction } = {
-      ArrowUp: 'up',
-      ArrowDown: 'down',
-      ArrowLeft: 'left',
-      ArrowRight: 'right',
-    };
+  toggleDebug() {
+    this.game.toggleDebug();
+    this.debugVisible = this.game.debugVisible;
+  }
 
-    const direction = keyMap[event.key];
-    if (direction) {
-      event.preventDefault();
-      this.game.move(direction);
+  dismissWin() {
+    this.game.dismissWin();
+  }
+
+  dismissGameOver() {
+    this.game.dismissGameOver();
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    switch (event.key) {
+      case 'ArrowUp':
+        this.move('up');
+        break;
+      case 'ArrowDown':
+        this.move('down');
+        break;
+      case 'ArrowLeft':
+        this.move('left');
+        break;
+      case 'ArrowRight':
+        this.move('right');
+        break;
     }
   }
 }
