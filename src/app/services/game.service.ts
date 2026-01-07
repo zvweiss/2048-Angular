@@ -22,13 +22,18 @@ export class GameService {
   private undoAvailableSubject = new BehaviorSubject<boolean>(false);
   undoAvailable$ = this.undoAvailableSubject.asObservable();
 
-  //private history: { board: Board; score: number }[] = [];
   private previousState: { board: Board; score: number } | null = null;
   private undoEnabledSubject = new BehaviorSubject<boolean>(true);
   undoEnabled$ = this.undoEnabledSubject.asObservable();
 
   private previousBoard: Board | null = null;
   private previousScore = 0;
+
+  private winSubject = new BehaviorSubject<boolean>(false);
+  win$ = this.winSubject.asObservable();
+
+  private gameOverSubject = new BehaviorSubject<boolean>(false);
+  gameOver$ = this.gameOverSubject.asObservable();
 
   constructor(private debug: DebugService) {
     this.debug.log('GameService initialized');
@@ -52,13 +57,14 @@ export class GameService {
     this.boardSubject.next(board);
     this.scoreSubject.next(0);
 
-    // Fetch and emit best score again
     this.bestScore = this.getBestScore();
     this.bestScoreSubject.next(this.bestScore);
 
-    // Clear undo history
     this.previousState = null;
     this.updateUndoAvailability();
+
+    this.winSubject.next(false);
+    this.gameOverSubject.next(false);
   }
 
   move(direction: Direction): void {
@@ -109,15 +115,16 @@ export class GameService {
     }
 
     if (moved) {
-      // Save a single-level undo snapshot
       this.previousState = {
-        board: originalBoard.map((row) => [...row]), // Deep copy
+        board: originalBoard.map((row) => [...row]),
         score: this.score,
       };
 
       this.spawnTile(finalBoard);
       this.boardSubject.next(finalBoard);
       this.updateUndoAvailability();
+      this.checkWin(finalBoard);
+      this.checkGameOver(finalBoard);
     } else {
       this.debug.log('No move made.');
     }
@@ -209,15 +216,15 @@ export class GameService {
   }
 
   updateScore(newScore: number) {
-  this.score = newScore;
-  this.scoreSubject.next(newScore);
+    this.score = newScore;
+    this.scoreSubject.next(newScore);
 
-  if (newScore > this.bestScore) {
-    this.bestScore = newScore;
-    this.saveBestScore(newScore);
-    this.bestScoreSubject.next(newScore); // ← emit the updated value!
+    if (newScore > this.bestScore) {
+      this.bestScore = newScore;
+      this.saveBestScore(newScore);
+      this.bestScoreSubject.next(newScore);
+    }
   }
-}
 
   getCurrentScore(): number {
     return this.scoreSubject.value;
@@ -233,5 +240,44 @@ export class GameService {
         row.map((cell) => (cell === 0 ? '.' : cell.toString())).join('\t')
       )
       .join('\n');
+  }
+
+  private checkWin(board: Board): void {
+    for (let row of board) {
+      for (let cell of row) {
+        if (cell === 2048) {
+          this.debug.log('Win condition met.');
+          this.winSubject.next(true);
+          return;
+        }
+      }
+    }
+  }
+
+  private checkGameOver(board: Board): void {
+    if (board.some(row => row.includes(0))) return;
+
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        const current = board[r][c];
+        if (
+          (r < this.size - 1 && board[r + 1][c] === current) ||
+          (c < this.size - 1 && board[r][c + 1] === current)
+        ) {
+          return;
+        }
+      }
+    }
+
+    this.debug.log('Game over condition met.');
+    this.gameOverSubject.next(true);
+  }
+
+  dismissWin(): void {
+    this.winSubject.next(false);
+  }
+
+  dismissGameOver(): void {
+    this.gameOverSubject.next(false);
   }
 }
