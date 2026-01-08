@@ -22,13 +22,18 @@ export class GameService {
   private undoAvailableSubject = new BehaviorSubject<boolean>(false);
   undoAvailable$ = this.undoAvailableSubject.asObservable();
 
-  //private history: { board: Board; score: number }[] = [];
-  private previousState: { board: Board; score: number } | null = null;
   private undoEnabledSubject = new BehaviorSubject<boolean>(true);
   undoEnabled$ = this.undoEnabledSubject.asObservable();
 
-  private previousBoard: Board | null = null;
-  private previousScore = 0;
+  private winSubject = new BehaviorSubject<boolean>(false);
+  win$ = this.winSubject.asObservable();
+
+  private gameOverSubject = new BehaviorSubject<boolean>(false);
+  gameOver$ = this.gameOverSubject.asObservable();
+
+  private previousState: { board: Board; score: number } | null = null;
+  private winAchieved = false;
+  public debugVisible = false;
 
   constructor(private debug: DebugService) {
     this.debug.log('GameService initialized');
@@ -36,12 +41,8 @@ export class GameService {
     this.debug.log('BestScore: ' + this.bestScore);
   }
 
-  saveBestScore(score: number): void {
-    localStorage.setItem('bestScore', JSON.stringify(score));
-  }
-
-  getBestScore(): number {
-    return JSON.parse(localStorage.getItem('bestScore') || '0');
+  private createEmptyBoard(): Board {
+    return Array.from({ length: this.size }, () => Array(this.size).fill(0));
   }
 
   startNewGame(): void {
@@ -52,13 +53,14 @@ export class GameService {
     this.boardSubject.next(board);
     this.scoreSubject.next(0);
 
-    // Fetch and emit best score again
     this.bestScore = this.getBestScore();
     this.bestScoreSubject.next(this.bestScore);
 
-    // Clear undo history
     this.previousState = null;
     this.updateUndoAvailability();
+    this.winAchieved = false;
+    this.winSubject.next(false);
+    this.gameOverSubject.next(false);
   }
 
   move(direction: Direction): void {
@@ -67,7 +69,6 @@ export class GameService {
     this.debug.log('Original board:\n' + this.formatBoard(originalBoard));
 
     let rotatedBoard: Board;
-
     switch (direction) {
       case 'up':
         rotatedBoard = this.rotateCounterClockwise(originalBoard);
@@ -85,7 +86,6 @@ export class GameService {
 
     const newBoard: Board = [];
     let moved = false;
-
     for (const row of rotatedBoard) {
       const [compressedRow, changed] = this.slideAndMergeRow(row);
       newBoard.push(compressedRow);
@@ -109,22 +109,123 @@ export class GameService {
     }
 
     if (moved) {
-      // Save a single-level undo snapshot
       this.previousState = {
-        board: originalBoard.map((row) => [...row]), // Deep copy
+        board: originalBoard.map((row) => [...row]),
         score: this.score,
       };
-
       this.spawnTile(finalBoard);
       this.boardSubject.next(finalBoard);
       this.updateUndoAvailability();
+      this.checkWin(finalBoard);
+      this.checkGameOver(finalBoard);
     } else {
       this.debug.log('No move made.');
     }
   }
 
-  private createEmptyBoard(): Board {
-    return Array.from({ length: this.size }, () => Array(this.size).fill(0));
+  private checkWin(board: Board) {
+    if (this.winAchieved) return;
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell === 2048) {
+          this.winAchieved = true;
+          this.winSubject.next(true);
+          return;
+        }
+      }
+    }
+  }
+
+  private checkGameOver(board: Board) {
+    if (this.isGameOver(board)) {
+      this.gameOverSubject.next(true);
+    }
+  }
+
+  private isGameOver(board: Board): boolean {
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if (board[r][c] === 0) return false;
+        if (c < this.size - 1 && board[r][c] === board[r][c + 1]) return false;
+        if (r < this.size - 1 && board[r][c] === board[r + 1][c]) return false;
+      }
+    }
+    return true;
+  }
+
+  dismissWin(): void {
+    this.winSubject.next(false);
+  }
+
+  resetGameOver(): void {
+    this.debug.log('Reset Game Over')
+    this.gameOverSubject.next(false);
+  }
+
+  undo(): void {
+    if (!this.undoEnabledSubject.value || !this.previousState) {
+      this.debug.log('No Undo is available')
+       return;
+    }
+    this.debug.log('Board before Undo:\n' + this.formatBoard(this.previousState.board));
+    this.boardSubject.next(this.previousState.board);
+    this.scoreSubject.next(this.previousState.score);
+    this.previousState = null;
+    this.updateUndoAvailability();
+  }
+
+  toggleUndoEnabled(): void {
+    const current = this.undoEnabledSubject.value;
+    this.undoEnabledSubject.next(!current);
+  }
+
+  toggleDebug(): void {
+    this.debugVisible = !this.debugVisible;
+  }
+
+  restart(): void {
+    this.debug.log('Restart');
+    this.startNewGame();
+  }
+
+  dismissGameOver(): void {
+    this.startNewGame();
+    this.gameOverSubject.next(false);
+  }
+
+  updateScore(newScore: number) {
+    this.score = newScore;
+    this.scoreSubject.next(newScore);
+    if (newScore > this.bestScore) {
+      this.bestScore = newScore;
+      this.saveBestScore(newScore);
+      this.bestScoreSubject.next(newScore);
+    }
+  }
+
+  private slideAndMergeRow(row: number[]): [number[], boolean] {
+    const filtered = row.filter((n) => n !== 0);
+    const merged: number[] = [];
+    let i = 0;
+    let changed = false;
+    while (i < filtered.length) {
+      if (filtered[i] === filtered[i + 1]) {
+        merged.push(filtered[i] * 2);
+        this.updateScore(this.score + filtered[i] * 2);
+        i += 2;
+        changed = true;
+      } else {
+        merged.push(filtered[i]);
+        i++;
+      }
+    }
+    while (merged.length < this.size) {
+      merged.push(0);
+    }
+    if (!changed && !merged.every((val, idx) => val === row[idx])) {
+      changed = true;
+    }
+    return [merged, changed];
   }
 
   private spawnTile(board: Board): void {
@@ -141,32 +242,6 @@ export class GameService {
     this.debug.log('Board after Spawn:\n' + this.formatBoard(board));
   }
 
-  private updateUndoAvailability(): void {
-    this.undoAvailableSubject.next(this.previousState !== null);
-  }
-
-  undo(): void {
-    if (!this.undoEnabledSubject.value || !this.previousState) return;
-
-    this.boardSubject.next(this.previousState.board);
-    this.scoreSubject.next(this.previousState.score);
-    this.previousState = null;
-    this.updateUndoAvailability();
-  }
-
-  toggleUndoEnabled(): void {
-    const current = this.undoEnabledSubject.value;
-    this.undoEnabledSubject.next(!current);
-  }
-
-  private rotateLeft(board: Board): Board {
-    return board[0].map((_, i) => board.map((row) => row[i])).reverse();
-  }
-
-  private rotateRight(board: Board): Board {
-    return board[0].map((_, i) => board.map((row) => row[this.size - 1 - i]));
-  }
-
   private rotateClockwise(board: Board): Board {
     return board[0].map((_, i) => board.map((row) => row[i]).reverse());
   }
@@ -179,52 +254,16 @@ export class GameService {
     return board.map((row) => [...row].reverse()).reverse();
   }
 
-  private slideAndMergeRow(row: number[]): [number[], boolean] {
-    const filtered = row.filter((n) => n !== 0);
-    const merged: number[] = [];
-    let i = 0;
-    let changed = false;
-
-    while (i < filtered.length) {
-      if (filtered[i] === filtered[i + 1]) {
-        merged.push(filtered[i] * 2);
-        this.updateScore(this.score + filtered[i] * 2);
-        i += 2;
-        changed = true;
-      } else {
-        merged.push(filtered[i]);
-        i++;
-      }
-    }
-
-    while (merged.length < this.size) {
-      merged.push(0);
-    }
-
-    if (!changed && !merged.every((val, idx) => val === row[idx])) {
-      changed = true;
-    }
-
-    return [merged, changed];
+  saveBestScore(score: number): void {
+    localStorage.setItem('bestScore', JSON.stringify(score));
   }
 
-  updateScore(newScore: number) {
-  this.score = newScore;
-  this.scoreSubject.next(newScore);
-
-  if (newScore > this.bestScore) {
-    this.bestScore = newScore;
-    this.saveBestScore(newScore);
-    this.bestScoreSubject.next(newScore); // ← emit the updated value!
-  }
-}
-
-  getCurrentScore(): number {
-    return this.scoreSubject.value;
+  getBestScore(): number {
+    return JSON.parse(localStorage.getItem('bestScore') || '0');
   }
 
-  resetScore() {
-    this.scoreSubject.next(0);
+  private updateUndoAvailability(): void {
+    this.undoAvailableSubject.next(this.previousState !== null);
   }
 
   private formatBoard(board: Board): string {
