@@ -64,7 +64,9 @@ export class GameService {
   }
 
   move(direction: Direction): void {
+    this.debug.log(`Move: ${direction.toUpperCase()}`);
     const originalBoard = this.boardSubject.value;
+    this.debug.log('Original board:\n' + this.formatBoard(originalBoard));
 
     let rotatedBoard: Board;
     switch (direction) {
@@ -111,12 +113,13 @@ export class GameService {
         board: originalBoard.map((row) => [...row]),
         score: this.score,
       };
-
       this.spawnTile(finalBoard);
       this.boardSubject.next(finalBoard);
       this.updateUndoAvailability();
       this.checkWin(finalBoard);
       this.checkGameOver(finalBoard);
+    } else {
+      this.debug.log('No move made.');
     }
   }
 
@@ -155,11 +158,16 @@ export class GameService {
   }
 
   resetGameOver(): void {
+    this.debug.log('Reset Game Over')
     this.gameOverSubject.next(false);
   }
 
   undo(): void {
-    if (!this.undoEnabledSubject.value || !this.previousState) return;
+    if (!this.undoEnabledSubject.value || !this.previousState) {
+      this.debug.log('No Undo is available')
+       return;
+    }
+    this.debug.log('Board before Undo:\n' + this.formatBoard(this.previousState.board));
     this.boardSubject.next(this.previousState.board);
     this.scoreSubject.next(this.previousState.score);
     this.previousState = null;
@@ -176,6 +184,7 @@ export class GameService {
   }
 
   restart(): void {
+    this.debug.log('Restart');
     this.startNewGame();
   }
 
@@ -229,6 +238,8 @@ export class GameService {
     if (empty.length === 0) return;
     const { r, c } = empty[Math.floor(Math.random() * empty.length)];
     board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    this.debug.log(`Spawn tile at row ${r}, col ${c}, value ${board[r][c]}`);
+    this.debug.log('Board after Spawn:\n' + this.formatBoard(board));
   }
 
   private rotateClockwise(board: Board): Board {
@@ -253,5 +264,13 @@ export class GameService {
 
   private updateUndoAvailability(): void {
     this.undoAvailableSubject.next(this.previousState !== null);
+  }
+
+  private formatBoard(board: Board): string {
+    return board
+      .map((row) =>
+        row.map((cell) => (cell === 0 ? '.' : cell.toString())).join('\t')
+      )
+      .join('\n');
   }
 }
