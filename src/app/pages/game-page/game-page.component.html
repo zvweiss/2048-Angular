@@ -1,7 +1,7 @@
 <app-navbar />
 
 <div class="game-container">
-  <div class="page-container">
+  <div class="page-container" appSwipe (swipe)="move($event)">
     <div class="score-container">
       <div class="score-box">
         <div>Score</div>
@@ -15,48 +15,28 @@
 
     <app-game-board />
 
+    <!-- Controls -->
     <div class="controls">
-      <div>
-        <button (click)="restart()">🔄</button>
-        <button (click)="move('up')">⬆️</button>
-        <button (click)="undo()">↩️</button>
-      </div>
+      <button (click)="move('up')">⬆️</button>
       <div>
         <button (click)="move('left')">⬅️</button>
         <button (click)="move('down')">⬇️</button>
         <button (click)="move('right')">➡️</button>
       </div>
     </div>
-    <!-- <div class="controls"> -->
-    <!-- <div> -->
-      <!-- <button class="debug-toggle" (click)="toggleUndoEnabled()">
+
+    <div class="controls">
+      <button (click)="restart()">🔄</button>
+      <button (click)="toggleUndoEnabled()">
         {{ (undoEnabled$ | async) ? "Disable Undo" : "Enable Undo" }}
-      </button> -->
-      <!-- <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">
-        ↩️
-      </button> -->
-    <!-- </div> -->
+      </button>
+      <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">↩️</button>
+    </div>
 
     <button class="debug-toggle" (click)="toggleDebug()">
       {{ debugVisible ? "Hide" : "Show" }} Debug Panel
     </button>
 
     <app-debug-panel *ngIf="debugVisible" />
-
-    <!-- Game Over Popup -->
-    <div *ngIf="gameOver$ | async" class="popup-overlay">
-      <div class="popup">
-        <h2>Game Over</h2>
-        <button (click)="dismissGameOver()">Restart</button>
-      </div>
-    </div>
-
-    <!-- Win Popup -->
-    <div *ngIf="win$ | async" class="popup-overlay">
-      <div class="popup">
-        <h2>You Win!</h2>
-        <button (click)="dismissWin()">Continue</button>
-      </div>
-    </div>
   </div>
 </div>
