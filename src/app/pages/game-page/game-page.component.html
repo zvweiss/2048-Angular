@@ -37,9 +37,11 @@
       </div>
     </div>
 
-    <button class="debug-toggle" *ngIf="DEBUG" toggleDebug()>
-      {{ debugVisible ? "Hide" : "Show" }} Debug Panel
-    </button>
-    <app-debug-panel *ngIf="debugVisible" />
+    <div *ngIf="DEBUG">
+      <button class="debug-toggle" (click)=toggleDebug()>
+        {{ debugVisible ? "Hide" : "Show" }} Debug Panel
+      </button>
+      <app-debug-panel *ngIf="debugVisible" />
+    </div>
   </div>
 </div>
