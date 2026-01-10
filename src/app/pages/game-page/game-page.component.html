@@ -1,7 +1,7 @@
 <app-navbar />
 
 <div class="game-container">
-  <div class="page-container" appSwipe (swipe)="move($event)">
+  <div class="page-container">
     <div class="score-container">
       <div class="score-box">
         <div>Score</div>
@@ -13,30 +13,33 @@
       </div>
     </div>
 
-    <app-game-board />
+    <!-- Control Buttons Positioned Above Board -->
+    <div class="top-controls">
+      <button class="left-button" (click)="restart()">🔄</button>
+      <button class="right-button" (click)="undo()">↩️</button>
+    </div>
 
-    <!-- Controls -->
-    <div class="controls">
-      <button (click)="move('up')">⬆️</button>
+    <!-- Game Board -->
+    <div appSwipe (swipe)="onSwipe($event)">
+      <app-game-board></app-game-board>
+    </div>
+
+    <div class="controls" *ngIf="DEBUG">
+      <div>
+        <button (click)="move('up')">⬆️</button>
+      </div>
       <div>
         <button (click)="move('left')">⬅️</button>
-        <button (click)="move('down')">⬇️</button>
         <button (click)="move('right')">➡️</button>
+      </div>
+      <div>
+        <button (click)="move('down')">⬇️</button>
       </div>
     </div>
 
-    <div class="controls">
-      <button (click)="restart()">🔄</button>
-      <button (click)="toggleUndoEnabled()">
-        {{ (undoEnabled$ | async) ? "Disable Undo" : "Enable Undo" }}
-      </button>
-      <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">↩️</button>
-    </div>
-
-    <button class="debug-toggle" (click)="toggleDebug()">
+    <button class="debug-toggle" *ngIf="DEBUG" toggleDebug()>
       {{ debugVisible ? "Hide" : "Show" }} Debug Panel
     </button>
-
     <app-debug-panel *ngIf="debugVisible" />
   </div>
 </div>

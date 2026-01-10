@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 
@@ -13,11 +13,12 @@ import { Direction } from '../../types/direction';
   selector: 'app-game-page',
   standalone: true,
   imports: [
+    SwipeDirective,
     CommonModule,
     SwipeDirective,
     GameBoardComponent,
     DebugPanelComponent,
-    NavbarComponent
+    NavbarComponent,
   ],
   templateUrl: './game-page.component.html',
   styleUrls: ['./game-page.component.css'],
@@ -31,6 +32,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
   win$;
 
   debugVisible = false;
+  DEBUG = true;
+  
   private subscriptions: Subscription[] = [];
 
   constructor(public game: GameService) {
@@ -40,6 +43,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.undoEnabled$ = game.undoEnabled$;
     this.gameOver$ = game.gameOver$;
     this.win$ = game.win$;
+  }
+
+  onSwipe(direction: 'left' | 'right' | 'up' | 'down') {
+    this.game.move(direction);
   }
 
   ngOnInit(): void {
@@ -76,5 +83,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   onDismissGameOver(): void {
     this.game.resetGameOver();
+  }
+
+    @HostListener('document:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    switch (event.key) {
+      case 'ArrowUp':
+        this.move('up');
+        break;
+      case 'ArrowDown':
+        this.move('down');
+        break;
+      case 'ArrowLeft':
+        this.move('left');
+        break;
+      case 'ArrowRight':
+        this.move('right');
+        break;
+    }
   }
 }

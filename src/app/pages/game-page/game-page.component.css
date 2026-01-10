@@ -1,15 +1,3 @@
-/* Button styling */
-/* button {
-  font-size: 1.25rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  background-color: #8f7a66;
-  color: white;
-  font-weight: bold;
-} */
-
 /* Root layout */
 .game-container {
   display: flex;
@@ -18,11 +6,9 @@
 }
 
 .page-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
-  max-width: 600px;
+  max-width: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
 }
 
 /* Score styling */
@@ -30,13 +16,15 @@
   display: flex;
   justify-content: center;
   gap: 1.5rem;
+  /* gap: 1.5rem; */
   margin-bottom: 1rem;
 }
 
 .score-box {
   background-color: #b8a896;
   color: white;
-  padding: 1rem 1.5rem;
+  padding: 1rem 1rem;
+  /* padding: 1rem 1.5rem; */
   border-radius: 12px;
   font-size: 1.2rem;
   text-align: center;
@@ -48,24 +36,37 @@ app-game-board {
   margin-top: 1rem;
 }
 
-/* Control groups */
-.controls {
+.top-controls {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.8rem;
+  margin: 1rem 0;
+  padding: 0 1rem;
 }
 
-.controls > div {
+.left-button,
+.right-button {
+  font-size: 1.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  background-color: #eee;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.controls {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 0.5rem;
+  margin-top: 1rem;
+  gap: 2rem;
 }
 
 /* Button styling */
 button {
   font-size: 1.25rem;
-  /* padding: 0.1rem 0.5rem; */
+  padding: 0.1rem 0.5rem;
   border-radius: 6px;
   border: none;
   cursor: pointer;
@@ -74,18 +75,9 @@ button {
   font-weight: bold;
 }
 
-/* Buttons (including emoji controls) */
-/*button {
-  background-color: #6b5b4c;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  padding: 0.6rem 1.2rem;
-  font-size: 1.5rem;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  transition: background-color 0.2s ease;
-} */
+.swipe-indicator {
+  touch-action: none; -webkit-user-select: none; user-select: none
+}
 
 button:hover:not(:disabled) {
   background-color: #5a4a3a;
@@ -98,11 +90,17 @@ button:disabled {
 
 /* Toggle button styles */
 .debug-toggle {
+    display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   background-color: #1c8f2e;
   font-size: 1rem;
-  /* padding: 0.5rem 1.5rem;
+  padding: 0.5rem 1.5rem;
   border-radius: 8px;
-  margin-top: 1rem; */
+  margin-top: 1rem;
+  justify-content: center;
+
+  gap: 0.5rem;
 }
 
 .debug-toggle:hover {
@@ -143,4 +141,17 @@ button:disabled {
   padding: 0.5rem 1.5rem;
   font-size: 1rem;
   border-radius: 6px;
+}
+
+
+@media (max-width: 600px) {
+  .score-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .debug-toggle {
+    width: 100%;
+    text-align: center;
+  }
 }

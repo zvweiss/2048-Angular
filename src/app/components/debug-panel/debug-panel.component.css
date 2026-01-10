@@ -1,4 +1,7 @@
 .debug-panel {
+  width: 100%;
+  max-width: 400px;
+  overflow-x: auto;
   background-color: #111;
   color: #0f0;
   font-family: monospace;

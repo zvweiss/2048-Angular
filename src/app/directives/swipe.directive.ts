@@ -1,9 +1,4 @@
-import {
-  Directive,
-  EventEmitter,
-  Output,
-  HostListener,
-} from '@angular/core';
+import { Directive, EventEmitter, HostListener, Output } from '@angular/core';
 
 @Directive({
   selector: '[appSwipe]',
@@ -12,29 +7,44 @@ import {
 export class SwipeDirective {
   @Output() swipe = new EventEmitter<'left' | 'right' | 'up' | 'down'>();
 
-  private touchStartX = 0;
-  private touchStartY = 0;
-  private threshold = 30; // Minimum distance in px to consider a swipe
+  private startX = 0;
+  private startY = 0;
+  private endX = 0;
+  private endY = 0;
+
+  private readonly swipeThreshold = 30;
 
   @HostListener('pointerdown', ['$event'])
   onPointerDown(event: PointerEvent) {
-    this.touchStartX = event.clientX;
-    this.touchStartY = event.clientY;
+    this.startX = event.clientX;
+    this.startY = event.clientY;
+  }
+
+  @HostListener('pointermove', ['$event'])
+  onPointerMove(event: PointerEvent) {
+    this.endX = event.clientX;
+    this.endY = event.clientY;
   }
 
   @HostListener('pointerup', ['$event'])
   onPointerUp(event: PointerEvent) {
-    const dx = event.clientX - this.touchStartX;
-    const dy = event.clientY - this.touchStartY;
+    const deltaX = this.endX - this.startX;
+    const deltaY = this.endY - this.startY;
 
-    if (Math.abs(dx) < this.threshold && Math.abs(dy) < this.threshold) {
-      return; // Ignore small movements
-    }
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      this.swipe.emit(dx > 0 ? 'right' : 'left');
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (Math.abs(deltaX) > this.swipeThreshold) {
+        this.swipe.emit(deltaX > 0 ? 'right' : 'left');
+      }
     } else {
-      this.swipe.emit(dy > 0 ? 'down' : 'up');
+      if (Math.abs(deltaY) > this.swipeThreshold) {
+        this.swipe.emit(deltaY > 0 ? 'down' : 'up');
+      }
     }
+  }
+
+  // Optional: Prevent default scrolling on touch
+  @HostListener('touchmove', ['$event'])
+  preventScroll(event: TouchEvent) {
+    if (event.cancelable) event.preventDefault();
   }
 }
