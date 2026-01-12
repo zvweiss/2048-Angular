@@ -32,7 +32,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   win$;
 
   debugVisible = false;
-  DEBUG = true;
+  DEBUG = false;
   
   private subscriptions: Subscription[] = [];
 

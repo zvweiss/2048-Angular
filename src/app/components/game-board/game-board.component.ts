@@ -20,6 +20,12 @@ export class GameBoardComponent {
   }
 
   getTileClass(value: number): string {
-    return value === 0 ? 'tile tile-0' : 'tile tile-' + value;
+    if (value === 0) {
+      return 'tile tile-0'
+    }
+      if (value < 2048) {
+      return 'tile tile-' + value
+    }
+    return 'tile tile.tile-super';
   }
 }

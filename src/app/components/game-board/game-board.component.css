@@ -17,68 +17,107 @@
 }
 
 .tile {
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height:80px;
+  /* width: 60px;
+  height: 60px; */
   font-size: 24px;
-  font-weight: bold;
   color: #776e65;
   display: flex;
   justify-content: center;
   align-items: center;
   background-color: #eee4da;
   border-radius: 5px;
+  font-weight: bold;
 }
 
 /* Color themes */
 .tile-2 {
-  background-color: #eee4da;
+  /* background-color: #eee4da; */
+  background: #eee4da;
+  font-size: 50px;
 }
 
 .tile-4 {
-  background-color: #ede0c8;
+  /* background-color: #ede0c8; */
+  background: #ede0c8;
+  font-size: 50px;
 }
 
 .tile-8 {
-  background-color: #f2b179;
+  /* background-color: #f2b179;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #f2b179;
+  font-size: 50px;
 }
 
 .tile-16 {
-  background-color: #f59563;
+  /* background-color: #f59563;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #f59563;
+  font-size: 47px;
 }
 
 .tile-32 {
+  /* background-color: #f67c5f;
+  color: #f9f6f2; */
   background-color: #f67c5f;
   color: #f9f6f2;
+  font-size: 47px;
 }
 
 .tile-64 {
-  background-color: #f65e3b;
+  /* background-color: #f65e3b;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #f65e3b;
+  font-size: 47px;
 }
 
 .tile-128 {
-  background-color: #edcf72;
+  /* background-color: #edcf72;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #edcf72;
+  font-size: 44px;
 }
 
 .tile-256 {
-  background-color: #edcc61;
+  /* background-color: #edcc61;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #edcc61;
+  font-size: 44px;
 }
 
 .tile-512 {
-  background-color: #edc850;
+  /* background-color: #edc850;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #edc850;
+  font-size: 44px;
 }
 
 .tile-1024 {
-  background-color: #edc53f;
+  /* background-color: #edc53f;
+  color: #f9f6f2; */
   color: #f9f6f2;
+  background: #edc53f;
+  font-size: 40px;
 }
 
 .tile-2048 {                           
-  background-color: #edc22e;
-  color: #f9f6f2;
+  /* background-color: #edc22e;
+  color: #f9f6f2; */
+  color: white;
+  background: black;
+  font-size: 40px;
+}
+
+.tile.tile-super {
+    color: white;
+    background: black;
+    font-size: 40px;
 }
