@@ -93,31 +93,38 @@
 }
 
 .tile-512 {
-  /* background-color: #edc850;
-  color: #f9f6f2; */
   color: #f9f6f2;
   background: #edc850;
   font-size: 44px;
 }
 
 .tile-1024 {
-  /* background-color: #edc53f;
-  color: #f9f6f2; */
-  color: #f9f6f2;
-  background: #edc53f;
-  font-size: 40px;
+  color: #e0be92;
+  background: #6a6555;
+  font-size: 36px;
 }
 
 .tile-2048 {                           
-  /* background-color: #edc22e;
-  color: #f9f6f2; */
-  color: white;
-  background: black;
-  font-size: 48px;
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 36px;
 }
 
-.tile.tile-super {
-    color: white;
-    background: black;
-    font-size: 40px;
+.tile-4096 {                           
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 36px;
 }
+
+.tile-8192 {                           
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 36px;
+}
+
+.tile.tile-super {    
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 32px;
+}
+
