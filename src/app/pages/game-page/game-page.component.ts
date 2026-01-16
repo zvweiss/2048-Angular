@@ -32,7 +32,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   win$;
 
   debugVisible = false;
-  DEBUG = false;
+  DEBUG = true;
   
   private subscriptions: Subscription[] = [];
 
@@ -85,7 +85,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.game.resetGameOver();
   }
 
-    @HostListener('document:keydown', ['$event'])
+  @HostListener('document:keydown', ['$event'])
   handleKeyboardEvent(event: KeyboardEvent) {
     switch (event.key) {
       case 'ArrowUp':

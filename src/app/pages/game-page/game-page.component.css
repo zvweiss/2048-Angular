@@ -1,157 +1,59 @@
-/* Root layout */
 .game-container {
   display: flex;
-  justify-content: center;
-  padding: 2rem;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  touch-action: none; /* prevents scrolling on swipe */
 }
 
 .page-container {
-  max-width: 100%;
-  padding: 1rem;
-  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 400px;
 }
 
-/* Score styling */
 .score-container {
   display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  /* gap: 1.5rem; */
+  justify-content: space-between;
+  width: 100%;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
 .score-box {
-  background-color: #b8a896;
-  color: white;
-  padding: 1rem 1rem;
-  /* padding: 1rem 1.5rem; */
-  border-radius: 12px;
-  font-size: 1.2rem;
+  flex: 1;
+  background: #bbada0;
+  color: #fff;
+  font-weight: bold;
+  padding: 0.5rem;
   text-align: center;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-/* Game board */
-app-game-board {
-  margin-top: 1rem;
-}
-
-.top-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 1rem 0;
-  padding: 0 1rem;
-}
-
-.left-button,
-.right-button {
-  font-size: 1.5rem;
-  padding: 0.5rem 1rem;
-  border: none;
-  background-color: #eee;
-  border-radius: 8px;
-  cursor: pointer;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
 }
 
 .controls {
+  margin: 1rem 0;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 1rem;
-  gap: 2rem;
-}
-
-/* Button styling */
-button {
-  font-size: 1.25rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  background-color: #8f7a66;
-  color: white;
-  font-weight: bold;
-}
-
-.swipe-indicator {
-  touch-action: none; -webkit-user-select: none; user-select: none
-}
-
-button:hover:not(:disabled) {
-  background-color: #5a4a3a;
-}
-
-button:disabled {
-  background-color: #aaa;
-  cursor: not-allowed;
-}
-
-/* Toggle button styles */
-.debug-toggle {
-    display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  background-color: #1c8f2e;
-  font-size: 1rem;
-  padding: 0.5rem 1.5rem;
-  border-radius: 8px;
-  margin-top: 1rem;
-  justify-content: center;
-
+  flex-direction: column;
   gap: 0.5rem;
 }
 
-.debug-toggle:hover {
-  background-color: #157221;
+.controls button {
+  font-size: 1.2rem;
+  padding: 0.5rem 1rem;
 }
 
-/* Popup overlay for win/game over */
-.popup-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-
-/* Popup content box */
-.popup {
-  background: white;
-  padding: 2rem 3rem;
-  border-radius: 10px;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-}
-
-.popup h2 {
-  margin-bottom: 1rem;
-  font-size: 2rem;
-}
-
-.popup button {
-  background-color: #bbada0;
-  color: white;
-  padding: 0.5rem 1.5rem;
-  font-size: 1rem;
-  border-radius: 6px;
-}
-
-
-@media (max-width: 600px) {
-  .score-container {
-    flex-direction: column;
-    align-items: center;
+@media (min-width: 600px) {
+  .controls {
+    flex-direction: row;
+    justify-content: space-between;
   }
 
-  .debug-toggle {
-    width: 100%;
-    text-align: center;
+  .score-container {
+    flex-direction: row;
   }
 }
