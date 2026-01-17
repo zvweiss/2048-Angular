@@ -37,8 +37,24 @@
       </div>
     </div> -->
 
+    <div class="overlay" *ngIf="win$ | async">
+      <div class="popup">
+        <h2>🎉 You win!</h2>
+        <p>Keep playing to reach higher scores.</p>
+        <button (click)="onDismissWin()">Continue</button>
+      </div>
+    </div>
+
+    <div class="overlay" *ngIf="gameOver$ | async">
+      <div class="popup">
+        <h2>💀 Game Over</h2>
+        <p>No more valid moves. Try again!</p>
+        <button (click)="onDismissGameOver()">Restart</button>
+      </div>
+    </div>
+
     <div *ngIf="DEBUG">
-      <button class="debug-toggle" (click)=toggleDebug()>
+      <button class="debug-toggle" (click)="toggleDebug()">
         {{ debugVisible ? "Hide" : "Show" }} Debug Panel
       </button>
       <app-debug-panel *ngIf="debugVisible" />
