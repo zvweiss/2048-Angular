@@ -1,0 +1,63 @@
+<app-navbar />
+
+<div class="game-container">
+  <div class="page-container">
+    <div class="score-container">
+      <div class="score-box">
+        <div>Score</div>
+        <div>{{ score$ | async }}</div>
+      </div>
+      <div class="score-box">
+        <div>Best</div>
+        <div>{{ bestScore$ | async }}</div>
+      </div>
+    </div>
+
+    <!-- Control Buttons Positioned Above Board -->
+    <div class="top-controls">
+      <button class="left-button" (click)="restart()">🔄</button>
+      <button class="right-button" (click)="undo()">↩️</button>
+    </div>
+
+    <!-- Game Board -->
+    <div appSwipe (swipe)="onSwipe($event)">
+      <app-game-board></app-game-board>
+    </div>
+
+    <!-- <div class="controls" *ngIf="DEBUG">
+      <div>
+        <button (click)="move('up')">⬆️</button>
+      </div>
+      <div>
+        <button (click)="move('left')">⬅️</button>
+        <button (click)="move('right')">➡️</button>
+      </div>
+      <div>
+        <button (click)="move('down')">⬇️</button>
+      </div>
+    </div> -->
+
+    <div class="overlay" *ngIf="win$ | async">
+      <div class="popup">
+        <h2>🎉 You win!</h2>
+        <p>Keep playing to reach higher scores.</p>
+        <button (click)="dismissWin()">Continue</button>
+      </div>
+    </div>
+
+    <div class="overlay" *ngIf="gameOver$ | async">
+      <div class="popup">
+        <h2>💀 Game Over</h2>
+        <p>No more valid moves. Try again!</p>
+        <button (click)="dismissGameOver()">Restart</button>
+      </div>
+    </div>
+
+    <div *ngIf="DEBUG">
+      <button class="debug-toggle" (click)="toggleDebug()">
+        {{ debugVisible ? "Hide" : "Show" }} Debug Panel
+      </button>
+      <app-debug-panel *ngIf="debugVisible" />
+    </div>
+  </div>
+</div>

@@ -6,7 +6,7 @@
   min-height: 100vh;
   box-sizing: border-box;
   overflow: hidden;
-  touch-action: none;
+  touch-action: none; /* prevents scrolling on swipe */
 }
 
 .page-container {
@@ -38,9 +38,8 @@
 .controls {
   margin: 1rem 0;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 0.5rem;
-  justify-content: center;
 }
 
 .controls button {
@@ -48,14 +47,14 @@
   padding: 0.5rem 1rem;
 }
 
-@media (max-width: 600px) {
-  .score-container {
-    flex-direction: column;
-    align-items: center;
+@media (min-width: 600px) {
+  .controls {
+    flex-direction: row;
+    justify-content: space-between;
   }
 
-  .controls {
-    flex-direction: column;
+  .score-container {
+    flex-direction: row;
   }
 }
 

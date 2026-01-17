@@ -1,63 +1,54 @@
-import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Subscription } from 'rxjs';
+// game-page.component.ts
+// import { Component, OnInit } from '@angular/core';
+// import { GameService } from '../../services/game.service';
+// import { Observable } from 'rxjs';
 
+import { Component, HostListener, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Observable } from 'rxjs';
 import { GameService } from '../../services/game.service';
-import { SwipeDirective } from '../../directives/swipe.directive';
-import { GameBoardComponent } from '../../components/game-board/game-board.component';
-import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
-import { Direction } from '../../types/direction';
+import { GameBoardComponent } from '../../components/game-board/game-board.component';
+import { Board } from '../../types/board';
+import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
+import { SwipeDirective } from '../../directives/swipe.directive';
 
 @Component({
   selector: 'app-game-page',
   standalone: true,
-  imports: [
-    SwipeDirective,
-    CommonModule,
-    SwipeDirective,
-    GameBoardComponent,
-    DebugPanelComponent,
-    NavbarComponent,
-  ],
   templateUrl: './game-page.component.html',
   styleUrls: ['./game-page.component.css'],
+  imports: [
+    CommonModule,
+    NavbarComponent,
+    GameBoardComponent,
+    DebugPanelComponent,
+    SwipeDirective,
+  ],
 })
-export class GamePageComponent implements OnInit, OnDestroy {
-  score$;
-  bestScore$;
-  undoAvailable$;
-  undoEnabled$;
-  gameOver$;
-  win$;
+export class GamePageComponent implements OnInit {
+  board$!: Observable<Board>;
+  score$!: Observable<number>;
+  bestScore$!: Observable<number>;
+  undoAvailable$!: Observable<boolean>;
+  win$!: Observable<boolean>;
+  gameOver$!: Observable<boolean>;
 
   debugVisible = false;
-  DEBUG = true;
-  
-  private subscriptions: Subscription[] = [];
 
-  constructor(public game: GameService) {
-    this.score$ = game.score$;
-    this.bestScore$ = game.bestScore$;
-    this.undoAvailable$ = game.undoAvailable$;
-    this.undoEnabled$ = game.undoEnabled$;
-    this.gameOver$ = game.gameOver$;
-    this.win$ = game.win$;
-  }
-
-  onSwipe(direction: 'left' | 'right' | 'up' | 'down') {
-    this.game.move(direction);
-  }
+  constructor(public game: GameService) {}
 
   ngOnInit(): void {
+    this.board$ = this.game.board$;
+    this.score$ = this.game.score$;
+    this.bestScore$ = this.game.bestScore$;
+    this.undoAvailable$ = this.game.undoAvailable$;
+    this.win$ = this.game.win$;
+    this.gameOver$ = this.game.gameOver$;
     this.game.startNewGame();
   }
 
-  ngOnDestroy(): void {
-    this.subscriptions.forEach((s) => s.unsubscribe());
-  }
-
-  move(direction: Direction): void {
+  move(direction: 'up' | 'down' | 'left' | 'right') {
     this.game.move(direction);
   }
 
@@ -69,24 +60,26 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.game.undo();
   }
 
-  toggleUndoEnabled(): void {
-    this.game.toggleUndoEnabled();
-  }
-
   toggleDebug(): void {
     this.debugVisible = !this.debugVisible;
   }
 
-  onDismissWin(): void {
+  dismissWin(): void {
     this.game.dismissWin();
   }
 
-  onDismissGameOver(): void {
-    this.game.resetGameOver();
+  dismissGameOver(): void {
+    this.game.resetGameOver(); // Hides the popup
+    this.game.startNewGame(); // Actually restarts the game
   }
 
-  @HostListener('document:keydown', ['$event'])
-  handleKeyboardEvent(event: KeyboardEvent) {
+  onSwipe(direction: 'up' | 'down' | 'left' | 'right') {
+    this.move(direction);
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent) {
+    console.log('Key pressed:', event.key); // Debug line
     switch (event.key) {
       case 'ArrowUp':
         this.move('up');
