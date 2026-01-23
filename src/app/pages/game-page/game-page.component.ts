@@ -8,7 +8,11 @@ import { CommonModule } from '@angular/common';
 import { Observable, Subject, takeUntil } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { GameService } from '../../services/game.service';
-import { AiService, AIStrategy } from '../../services/ai.service';
+import {
+  AiService,
+  AIStrategy,
+  ExpectimaxConfig,
+} from '../../services/ai.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { Board } from '../../types/board';
@@ -39,17 +43,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
   gameOver$!: Observable<boolean>;
 
   debugVisible = false;
-  aiStrategy: AIStrategy = 'random';
+  aiStrategy: AIStrategy = 'expectimax';
   aiRunning = false;
   gameOverActive = false;
-  aiSpeedMs = 200;
+  aiSpeedMs = 5;
+  aiConfig: ExpectimaxConfig;
   private aiIntervalId: number | null = null;
   private destroy$ = new Subject<void>();
 
   constructor(
     public game: GameService,
     private ai: AiService
-  ) {}
+  ) {
+    this.aiConfig = this.ai.getExpectimaxConfig();
+  }
 
   ngOnInit(): void {
     this.board$ = this.game.board$;
@@ -143,6 +150,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.stopAi();
     this.aiRunning = true;
     this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
+  }
+
+  syncExpectimaxConfig(): void {
+    this.ai.updateExpectimaxConfig({
+      depth: this.aiConfig.depth,
+      weights: { ...this.aiConfig.weights },
+    });
   }
 
   @HostListener('window:keydown', ['$event'])
