@@ -11,11 +11,45 @@
         <div>Best</div>
         <div>{{ bestScore$ | async }}</div>
       </div>
+      <div class="score-box">
+        <div>Moves</div>
+        <div>{{ moveCount$ | async }}</div>
+      </div>
     </div>
 
     <div class="controls">
       <button (click)="restart()">🔄</button>
       <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">↩️</button>
+    </div>
+
+    <div class="ai-controls">
+      <label>
+        AI Strategy
+        <select [(ngModel)]="aiStrategy" [disabled]="aiRunning">
+          <option value="random">Random</option>
+          <option value="greedy">Greedy</option>
+        </select>
+      </label>
+      <label class="ai-speed">
+        AI Speed
+        <input
+          type="range"
+          min="5"
+          max="1000"
+          step="10"
+          [(ngModel)]="aiSpeedMs"
+          (input)="updateAiSpeed()"
+        />
+        <span>{{ aiSpeedMs }} ms</span>
+      </label>
+      <div class="ai-buttons">
+        <button (click)="toggleAiRun()" [disabled]="gameOverActive">
+          {{ aiRunning ? 'Stop AI' : 'Run AI' }}
+        </button>
+        <button (click)="stepAi()" [disabled]="aiRunning || gameOverActive">
+          Single Step
+        </button>
+      </div>
     </div>
 
     <app-game-board></app-game-board>

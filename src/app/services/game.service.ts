@@ -19,6 +19,10 @@ export class GameService {
   private bestScoreSubject = new BehaviorSubject<number>(this.bestScore);
   bestScore$ = this.bestScoreSubject.asObservable();
 
+  private moveCount = 0;
+  private moveCountSubject = new BehaviorSubject<number>(0);
+  moveCount$ = this.moveCountSubject.asObservable();
+
   private undoAvailableSubject = new BehaviorSubject<boolean>(false);
   undoAvailable$ = this.undoAvailableSubject.asObservable();
 
@@ -31,7 +35,21 @@ export class GameService {
   private gameOverSubject = new BehaviorSubject<boolean>(false);
   gameOver$ = this.gameOverSubject.asObservable();
 
-  private previousState: { board: Board; score: number } | null = null;
+  getBoardSnapshot(): Board {
+    return this.boardSubject.value.map((row) => [...row]);
+  }
+
+  getScoreSnapshot(): number {
+    return this.score;
+  }
+
+  getMoveCountSnapshot(): number {
+    return this.moveCount;
+  }
+
+  private previousState:
+    | { board: Board; score: number; moveCount: number }
+    | null = null;
   private winAchieved = false;
   public debugVisible = false;
 
@@ -52,6 +70,8 @@ export class GameService {
     this.spawnTile(board);
     this.boardSubject.next(board);
     this.scoreSubject.next(0);
+    this.moveCount = 0;
+    this.moveCountSubject.next(0);
 
     this.bestScore = this.getBestScore();
     this.bestScoreSubject.next(this.bestScore);
@@ -112,9 +132,12 @@ export class GameService {
       this.previousState = {
         board: originalBoard.map((row) => [...row]),
         score: this.score,
+        moveCount: this.moveCount,
       };
       this.spawnTile(finalBoard);
       this.boardSubject.next(finalBoard);
+      this.moveCount += 1;
+      this.moveCountSubject.next(this.moveCount);
       this.updateUndoAvailability();
       this.checkWin(finalBoard);
       this.checkGameOver(finalBoard);
@@ -170,6 +193,8 @@ export class GameService {
     this.debug.log('Board before Undo:\n' + this.formatBoard(this.previousState.board));
     this.boardSubject.next(this.previousState.board);
     this.scoreSubject.next(this.previousState.score);
+    this.moveCount = this.previousState.moveCount;
+    this.moveCountSubject.next(this.moveCount);
     this.previousState = null;
     this.updateUndoAvailability();
   }

@@ -56,6 +56,55 @@
   padding: 0.5rem 1rem;
 }
 
+.ai-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: var(--board-width);
+  max-width: 100%;
+  margin-bottom: 1rem;
+}
+
+.ai-controls label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+
+.ai-controls .ai-speed {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ai-controls .ai-speed input[type='range'] {
+  width: 100%;
+}
+
+.ai-controls .ai-speed span {
+  min-width: 4.5rem;
+  text-align: right;
+}
+
+.ai-controls select {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+}
+
+.ai-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ai-buttons button {
+  flex: 1;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+}
+
 app-game-board {
   display: block;
   margin: 1rem 0;
@@ -70,6 +119,24 @@ app-game-board {
   }
 
   .controls {
+    flex-direction: column;
+  }
+
+  .ai-controls label {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ai-controls .ai-speed {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .ai-controls .ai-speed span {
+    text-align: left;
+  }
+
+  .ai-buttons {
     flex-direction: column;
   }
 }
