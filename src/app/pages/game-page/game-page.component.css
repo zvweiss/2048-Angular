@@ -80,29 +80,6 @@
   gap: 0.75rem;
 }
 
-.expectimax-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.expectimax-controls label {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.75rem;
-  font-weight: 600;
-}
-
-.expectimax-controls input[type='range'] {
-  width: 100%;
-}
-
-.expectimax-controls span {
-  min-width: 4.5rem;
-  text-align: right;
-}
-
 .ai-controls .ai-speed input[type='range'] {
   width: 100%;
 }
@@ -110,11 +87,6 @@
 .ai-controls .ai-speed span {
   min-width: 4.5rem;
   text-align: right;
-}
-
-.ai-controls select {
-  flex: 1;
-  padding: 0.4rem 0.6rem;
 }
 
 .ai-buttons {
@@ -133,6 +105,31 @@ app-game-board {
   margin: 1rem 0;
   width: var(--board-width);
   max-width: 100%;
+}
+
+.ai-summary {
+  width: var(--board-width);
+  max-width: 100%;
+  background: #f3efe8;
+  color: #2a1a10;
+  border: 1px solid #d6cfc6;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.debug-controls {
+  display: flex;
+  gap: 0.5rem;
+  width: var(--board-width);
+  max-width: 100%;
+}
+
+.debug-controls .debug-toggle {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
 }
 
 @media (max-width: 600px) {
@@ -156,15 +153,6 @@ app-game-board {
   }
 
   .ai-controls .ai-speed span {
-    text-align: left;
-  }
-
-  .expectimax-controls label {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-  }
-
-  .expectimax-controls span {
     text-align: left;
   }
 

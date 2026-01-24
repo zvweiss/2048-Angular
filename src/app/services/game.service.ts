@@ -69,6 +69,7 @@ export class GameService {
     this.spawnTile(board);
     this.spawnTile(board);
     this.boardSubject.next(board);
+    this.score = 0;
     this.scoreSubject.next(0);
     this.moveCount = 0;
     this.moveCountSubject.next(0);

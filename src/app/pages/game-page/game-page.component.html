@@ -23,14 +23,6 @@
     </div>
 
     <div class="ai-controls">
-      <label>
-        AI Strategy
-        <select [(ngModel)]="aiStrategy" [disabled]="aiRunning">
-          <option value="expectimax">Expectimax</option>
-          <option value="random">Random</option>
-          <option value="greedy">Greedy</option>
-        </select>
-      </label>
       <label class="ai-speed">
         AI Speed
         <input
@@ -43,83 +35,6 @@
         />
         <span>{{ aiSpeedMs }} ms</span>
       </label>
-      <div
-        class="expectimax-controls"
-        *ngIf="aiStrategy === 'expectimax' && aiConfig"
-      >
-        <label class="ai-depth">
-          Depth
-          <input
-            type="range"
-            min="1"
-            max="4"
-            step="1"
-            [(ngModel)]="aiConfig.depth"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.depth }}</span>
-        </label>
-        <label class="ai-weight">
-          Empty
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            [(ngModel)]="aiConfig.weights.empty"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.weights.empty | number: '1.1-1' }}</span>
-        </label>
-        <label class="ai-weight">
-          Monotonic
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            [(ngModel)]="aiConfig.weights.monotonicity"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.weights.monotonicity | number: '1.1-1' }}</span>
-        </label>
-        <label class="ai-weight">
-          Smooth
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            [(ngModel)]="aiConfig.weights.smoothness"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.weights.smoothness | number: '1.1-1' }}</span>
-        </label>
-        <label class="ai-weight">
-          Max Tile
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            [(ngModel)]="aiConfig.weights.maxTile"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.weights.maxTile | number: '1.1-1' }}</span>
-        </label>
-        <label class="ai-weight">
-          Corner
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            [(ngModel)]="aiConfig.weights.corner"
-            (input)="syncExpectimaxConfig()"
-          />
-          <span>{{ aiConfig.weights.corner | number: '1.1-1' }}</span>
-        </label>
-      </div>
       <div class="ai-buttons">
         <button (click)="toggleAiRun()" [disabled]="gameOverActive">
           {{ aiRunning ? 'Stop AI' : 'Run AI' }}
@@ -132,14 +47,28 @@
 
     <app-game-board></app-game-board>
 
-    <button class="debug-toggle" (click)="toggleDebug()">
-      {{ debugVisible ? 'Hide' : 'Show' }} Debug Panel
-    </button>
+    <div class="ai-summary" *ngIf="aiSummary">
+      {{ aiSummary }}
+    </div>
 
-    <app-debug-panel *ngIf="debugVisible" />
+    <div
+      class="debug-controls"
+      *ngIf="debugMode && debugVisible; else debugToggleOnly"
+    >
+      <button class="debug-toggle" (click)="toggleDebug()">
+        Hide Debug Panel
+      </button>
+    </div>
+    <ng-template #debugToggleOnly>
+      <button class="debug-toggle" (click)="toggleDebug()" *ngIf="debugMode">
+        Show Debug Panel
+      </button>
+    </ng-template>
+
+    <app-debug-panel *ngIf="debugMode && debugVisible" />
 
     <!-- WIN POPUP -->
-    <div class="overlay" *ngIf="win$ | async">
+    <div class="overlay" *ngIf="(win$ | async) && !aiRunning && !winFromAiRun">
       <div class="popup">
         <h2>🎉 You win!</h2>
         <p>Keep playing to reach higher scores.</p>
@@ -148,11 +77,11 @@
     </div>
 
     <!-- GAME OVER POPUP -->
-    <div class="overlay" *ngIf="gameOver$ | async">
+    <div class="overlay" *ngIf="(gameOver$ | async) && !gameOverDismissed">
       <div class="popup">
         <h2>💀 Game Over</h2>
         <p>No more valid moves. Try again!</p>
-        <button (click)="dismissGameOver()">Restart</button>
+        <button (click)="dismissGameOver()">Dismiss</button>
       </div>
     </div>
   </div>

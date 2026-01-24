@@ -1,0 +1,50 @@
+.history-container {
+  max-width: 960px;
+  margin: 24px auto 64px;
+  padding: 0 16px;
+  color: #2b2622;
+}
+
+h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.table-wrap {
+  border: 1px solid #d8cec1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fbf7f2;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #e4dbd0;
+}
+
+th {
+  background: #efe7dc;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.empty {
+  padding: 24px;
+  background: #fbf7f2;
+  border: 1px dashed #d8cec1;
+  border-radius: 10px;
+}

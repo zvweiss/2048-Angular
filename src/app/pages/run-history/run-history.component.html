@@ -1,0 +1,32 @@
+<app-navbar />
+
+<div class="history-container">
+  <h2>AI Run History</h2>
+
+  <div class="table-wrap" *ngIf="runs.length > 0; else emptyState">
+    <table>
+      <thead>
+        <tr>
+          <th (click)="sortBy('timestamp')">Date/Time</th>
+          <th (click)="sortBy('score')">Score</th>
+          <th (click)="sortBy('maxTile')">Max Tile</th>
+          <th (click)="sortBy('moves')">Moves</th>
+          <th (click)="sortBy('durationMs')">Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let run of runs">
+          <td>{{ formatTimestamp(run.timestamp) }}</td>
+          <td>{{ run.score }}</td>
+          <td>{{ run.maxTile }}</td>
+          <td>{{ run.moves }}</td>
+          <td>{{ formatDuration(run.durationMs) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #emptyState>
+    <div class="empty">No runs recorded yet.</div>
+  </ng-template>
+</div>

@@ -8,16 +8,14 @@ import { CommonModule } from '@angular/common';
 import { Observable, Subject, takeUntil } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { GameService } from '../../services/game.service';
-import {
-  AiService,
-  AIStrategy,
-  ExpectimaxConfig,
-} from '../../services/ai.service';
+import { AiService } from '../../services/ai.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { Board } from '../../types/board';
 import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
 import { SwipeDirective } from '../../directives/swipe.directive';
+import { DebugService } from '../../services/debug.service';
+import { RunHistoryService } from '../../services/run-history.service';
 
 @Component({
   selector: 'app-game-page',
@@ -43,20 +41,29 @@ export class GamePageComponent implements OnInit, OnDestroy {
   gameOver$!: Observable<boolean>;
 
   debugVisible = false;
-  aiStrategy: AIStrategy = 'expectimax';
   aiRunning = false;
   gameOverActive = false;
+  gameOverDismissed = false;
+  winFromAiRun = false;
   aiSpeedMs = 5;
-  aiConfig: ExpectimaxConfig;
+  aiSummary = '';
+  readonly debugMode = false;
   private aiIntervalId: number | null = null;
+  private aiStepInFlight = false;
+  private aiRunToken = 0;
+  private aiRunLastStartedAt: number | null = null;
+  private aiRunAccumulatedMs = 0;
+  private aiRunStartMoves = 0;
+  private aiRunAccumulatedMoves = 0;
+  private aiRunLogged = false;
   private destroy$ = new Subject<void>();
 
   constructor(
     public game: GameService,
-    private ai: AiService
-  ) {
-    this.aiConfig = this.ai.getExpectimaxConfig();
-  }
+    private ai: AiService,
+    private debug: DebugService,
+    private runHistory: RunHistoryService
+  ) {}
 
   ngOnInit(): void {
     this.board$ = this.game.board$;
@@ -67,12 +74,27 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.win$ = this.game.win$;
     this.gameOver$ = this.game.gameOver$;
     this.game.startNewGame();
+    this.winFromAiRun = false;
 
     this.gameOver$
       .pipe(takeUntil(this.destroy$))
       .subscribe((isOver) => {
         this.gameOverActive = isOver;
-        if (isOver) this.stopAi();
+        if (isOver) {
+          this.gameOverDismissed = false;
+        }
+        if (isOver) this.stopAi('game-over');
+      });
+
+    this.win$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((won) => {
+        if (!won) return;
+        if (this.aiRunning) {
+          this.winFromAiRun = true;
+          return;
+        }
+        this.updateAiSummary('win');
       });
   }
 
@@ -87,8 +109,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   restart(): void {
-    this.stopAi();
+    this.stopAi('stop');
+    this.resetAiRunTracking();
     this.game.startNewGame();
+    this.winFromAiRun = false;
   }
 
   undo(): void {
@@ -101,12 +125,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   dismissWin(): void {
     this.game.dismissWin();
+    this.winFromAiRun = false;
   }
 
   dismissGameOver(): void {
-    this.stopAi();
-    this.game.resetGameOver(); // Hides the popup
-    this.game.startNewGame(); // Actually restarts the game
+    this.gameOverDismissed = true;
   }
 
   onSwipe(direction: 'up' | 'down' | 'left' | 'right') {
@@ -115,48 +138,130 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   toggleAiRun(): void {
     if (this.aiRunning) {
-      this.stopAi();
+      this.stopAi('stop');
       return;
     }
     if (this.gameOverActive) return;
-    this.aiRunning = true;
-    this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
+    this.startAiLoop();
   }
 
-  stepAi(): void {
+  async stepAi(): Promise<void> {
+    if (this.aiStepInFlight) return;
     if (this.gameOverActive) {
       this.stopAi();
       return;
     }
+    this.aiStepInFlight = true;
+    const runToken = this.aiRunToken;
     const board = this.game.getBoardSnapshot();
-    const nextMove = this.ai.getMove(board, this.aiStrategy);
-    if (!nextMove) {
-      this.stopAi();
-      return;
+    try {
+      const nextMove = await this.ai.getMove(board);
+      if (runToken !== this.aiRunToken || !this.aiRunning) {
+        return;
+      }
+      if (!nextMove) {
+        this.stopAi();
+        return;
+      }
+      this.game.move(nextMove);
+    } finally {
+      this.aiStepInFlight = false;
     }
-    this.game.move(nextMove);
   }
 
-  private stopAi(): void {
+  private stopAi(reason: 'stop' | 'game-over' = 'stop'): void {
+    this.aiRunToken++;
+    this.aiStepInFlight = false;
     if (this.aiIntervalId !== null) {
       clearInterval(this.aiIntervalId);
       this.aiIntervalId = null;
+    }
+    if (this.aiRunning) {
+      if (this.aiRunLastStartedAt !== null) {
+        this.aiRunAccumulatedMs += Date.now() - this.aiRunLastStartedAt;
+        this.aiRunLastStartedAt = null;
+      }
+      this.aiRunAccumulatedMoves +=
+        this.game.getMoveCountSnapshot() - this.aiRunStartMoves;
+      this.aiRunning = false;
+      this.updateAiSummary(reason);
     }
     this.aiRunning = false;
   }
 
   updateAiSpeed(): void {
     if (!this.aiRunning) return;
-    this.stopAi();
-    this.aiRunning = true;
+    if (this.aiIntervalId !== null) {
+      clearInterval(this.aiIntervalId);
+    }
     this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
   }
 
-  syncExpectimaxConfig(): void {
-    this.ai.updateExpectimaxConfig({
-      depth: this.aiConfig.depth,
-      weights: { ...this.aiConfig.weights },
-    });
+  private updateAiSummary(reason: 'win' | 'game-over' | 'stop'): void {
+    const board = this.game.getBoardSnapshot();
+    const maxTile = Math.max(...board.flat());
+    const score = this.game.getScoreSnapshot();
+    const totalMoves = this.game.getMoveCountSnapshot();
+    const runningMoves = this.aiRunning
+      ? totalMoves - this.aiRunStartMoves
+      : 0;
+    const movesSinceStart = this.aiRunAccumulatedMoves + runningMoves;
+    const runningMs =
+      this.aiRunning && this.aiRunLastStartedAt !== null
+        ? Date.now() - this.aiRunLastStartedAt
+        : 0;
+    const durationMs = this.aiRunAccumulatedMs + runningMs;
+    const durationLine = durationMs > 0 ? ` durationMs=${durationMs}` : '';
+    if (movesSinceStart <= 0) {
+      this.aiSummary = '';
+      return;
+    }
+    const message =
+      `AI summary (${reason}): maxTile=${maxTile}` +
+      ` score=${score}` +
+      ` moves=${movesSinceStart}` +
+      ` totalMoves=${totalMoves}` +
+      durationLine;
+    this.aiSummary = message;
+    console.log(message);
+    this.debug.log(message);
+
+    if (reason === 'game-over' && !this.aiRunLogged) {
+      this.aiRunLogged = true;
+      this.runHistory.addRun({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: Date.now(),
+        reason,
+        maxTile,
+        score,
+        moves: movesSinceStart,
+        totalMoves,
+        durationMs,
+      });
+    }
+  }
+
+  private startAiLoop(): void {
+    this.aiRunning = true;
+    this.aiStepInFlight = false;
+    this.aiRunToken++;
+    this.aiRunLogged = false;
+    this.aiRunLastStartedAt = Date.now();
+    this.aiRunStartMoves = this.game.getMoveCountSnapshot();
+    this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
+  }
+
+  private resetAiRunTracking(): void {
+    this.aiSummary = '';
+    this.aiRunLastStartedAt = null;
+    this.aiRunAccumulatedMs = 0;
+    this.aiRunStartMoves = 0;
+    this.aiRunAccumulatedMoves = 0;
+    this.aiStepInFlight = false;
+    this.aiRunToken++;
+    this.gameOverDismissed = false;
+    this.winFromAiRun = false;
+    this.aiRunLogged = false;
   }
 
   @HostListener('window:keydown', ['$event'])

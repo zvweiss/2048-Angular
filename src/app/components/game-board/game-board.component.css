@@ -18,7 +18,7 @@
 
 .tile {
   width: 80px;
-  height:80px;
+  height: 80px;
   /* width: 60px;
   height: 60px; */
   font-size: 24px;
@@ -47,32 +47,35 @@
 .tile-8 {
   /* background-color: #f2b179;
   color: #f9f6f2; */
-  color: #f9f6f2;
-  background: #f2b179;
+  background: #edd8c8;
   font-size: 50px;
 }
 
 .tile-16 {
   /* background-color: #f59563;
   color: #f9f6f2; */
-  color: #f9f6f2;
-  background: #f59563;
+  /* background: #e9a683; */
+  background: #f5e5b6;
   font-size: 47px;
 }
 
 .tile-32 {
   /* background-color: #f67c5f;
   color: #f9f6f2; */
-  background-color: #f67c5f;
-  color: #f9f6f2;
+  /* background-color: #f67c5f;
+  color: #f9f6f2; */
+  /* background: #df8351; */
+  background: #f7e3a6;
   font-size: 47px;
 }
 
 .tile-64 {
   /* background-color: #f65e3b;
   color: #f9f6f2; */
-  color: #f9f6f2;
-  background: #f65e3b;
+  /* color: #f9f6f2;
+  background: #f65e3b; */
+  /* background: #e87e45; */
+  background: #f0db9a;
   font-size: 47px;
 }
 
@@ -80,7 +83,9 @@
   /* background-color: #edcf72;
   color: #f9f6f2; */
   color: #f9f6f2;
-  background: #edcf72;
+  /* background: #edcf72; */
+  /* background: #dd2d21; */
+  background: #b51206;
   font-size: 44px;
 }
 
@@ -88,43 +93,56 @@
   /* background-color: #edcc61;
   color: #f9f6f2; */
   color: #f9f6f2;
-  background: #edcc61;
+  /* background: #e62618; */
+  background: #b51206;
   font-size: 44px;
 }
 
 .tile-512 {
   color: #f9f6f2;
-  background: #edc850;
+  /* background: #edc850; */
+  background: #b51206;
   font-size: 44px;
 }
 
 .tile-1024 {
-  color: #e0be92;
-  background: #6a6555;
-  font-size: 36px;
-}
-
-.tile-2048 {                           
   color: rgb(255, 255, 255);
-  background: rgba(0, 0, 0);
+  background: rgba(128, 128, 128);
   font-size: 36px;
 }
 
-.tile-4096 {                           
+.tile-2048 {
   color: rgb(255, 255, 255);
-  background: rgba(0, 0, 0);
+  background: rgb(98, 98, 98);
   font-size: 36px;
 }
 
-.tile-8192 {                           
+.tile-4096 {
   color: rgb(255, 255, 255);
-  background: rgba(0, 0, 0);
+  background: rgb(68, 68, 68);
   font-size: 36px;
 }
 
-.tile.tile-super {    
+.tile-8192 {
+  color: rgb(255, 255, 255);
+  background: rgb(0, 0, 0);
+  font-size: 36px;
+}
+
+.tile-16384 {
   color: rgb(255, 255, 255);
   background: rgba(0, 0, 0);
   font-size: 32px;
 }
 
+.tile-16384 {
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 32px;
+}
+
+.tile.tile-super {
+  color: rgb(255, 255, 255);
+  background: rgba(0, 0, 0);
+  font-size: 32px;
+}
