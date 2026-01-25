@@ -4,5 +4,6 @@
     "outDir": "./out-tsc/worker",
     "types": []
   },
-  "include": ["src/**/*.worker.ts"]
+  "include": ["src/**/*.worker.ts"],
+  "exclude": ["src/app/workers/expectimax.worker.ts"]
 }

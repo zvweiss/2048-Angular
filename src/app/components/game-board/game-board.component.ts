@@ -23,7 +23,7 @@ export class GameBoardComponent {
     if (value === 0) {
       return 'tile tile-0'
     }
-      if (value <= 16384) {
+      if (value <= 32768) {
       return 'tile tile-' + value
     }
     return 'tile tile.tile-super';

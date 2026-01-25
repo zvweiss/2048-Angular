@@ -47,6 +47,16 @@ export class GameService {
     return this.moveCount;
   }
 
+  isGameOverActive(): boolean {
+    return this.gameOverSubject.value;
+  }
+
+  isBoardEmpty(): boolean {
+    return this.boardSubject.value.every((row) =>
+      row.every((cell) => cell === 0)
+    );
+  }
+
   private previousState:
     | { board: Board; score: number; moveCount: number }
     | null = null;
@@ -161,6 +171,7 @@ export class GameService {
   }
 
   private checkGameOver(board: Board) {
+    if (this.gameOverSubject.value) return;
     if (this.isGameOver(board)) {
       this.gameOverSubject.next(true);
     }

@@ -11,6 +11,33 @@ h2 {
   font-weight: 700;
 }
 
+.summary {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: #efe7dc;
+  border: 1px solid #d8cec1;
+  border-radius: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clear-btn {
+  background: #d2c3b4;
+  border: 1px solid #b8a797;
+  color: #3a2f25;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: #c8b7a7;
+}
+
 .table-wrap {
   border: 1px solid #d8cec1;
   border-radius: 10px;

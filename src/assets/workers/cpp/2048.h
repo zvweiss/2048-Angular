@@ -52,12 +52,16 @@ extern "C" {
 #endif
 
 DLL_PUBLIC void init_tables();
+DLL_PUBLIC board_t execute_move(int move, board_t board);
 
 typedef int (*get_move_func_t)(board_t);
 DLL_PUBLIC float score_toplevel_move(board_t board, int move);
 DLL_PUBLIC int find_best_move(board_t board);
 DLL_PUBLIC int ask_for_move(board_t board);
 DLL_PUBLIC void play_game(get_move_func_t get_move);
+// WASM entrypoint used by the JS worker.
+DLL_PUBLIC float JS_sc(int mindepth, int smartness, int move,
+                       uint16_t col1, uint16_t col2, uint16_t col3, uint16_t col4);
 
 #ifdef __cplusplus
 }

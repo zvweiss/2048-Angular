@@ -16,7 +16,7 @@ export class WrkrService {
   constructor(private zone: NgZone) {
     if (typeof Worker !== 'undefined') {
       const workerUrl = new URL(
-        '/assets/workers/js/wrkr.js',
+        '/assets/workers/wasm/wrkr.js',
         window.location.origin
       );
       this.worker = new Worker(workerUrl);
