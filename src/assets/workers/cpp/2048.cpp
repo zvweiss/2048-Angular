@@ -224,7 +224,7 @@ static inline board_t execute_move_3(board_t board) {
 }
 
 /* Execute a move. */
-static inline board_t execute_move(int move, board_t board) {
+board_t execute_move(int move, board_t board) {
     switch(move) {
     case 0: // up
         return execute_move_0(board);
@@ -309,9 +309,8 @@ static float score_board(board_t board) {
 // Statistics and controls
 // cprob: cumulative probability
 // don't recurse into a node with a cprob less than this threshold
-static const float CPROB_THRESH_BASE = 0.0003f;
-static const int CACHE_DEPTH_LIMIT  = 8;
-static const size_t CACHE_SIZE_LIMIT = 100000;
+static const float CPROB_THRESH_BASE = 0.0001f;
+static const int CACHE_DEPTH_LIMIT  = 15;
 
 static float score_tilechoose_node(eval_state &state, board_t board, float cprob) {
     if (cprob < CPROB_THRESH_BASE || state.curdepth >= state.depth_limit) {
@@ -353,9 +352,6 @@ static float score_tilechoose_node(eval_state &state, board_t board, float cprob
     res = res / num_open;
 
     if (state.curdepth < CACHE_DEPTH_LIMIT) {
-        if (state.trans_table.size() > CACHE_SIZE_LIMIT) {
-            state.trans_table.clear();
-        }
         trans_table_entry_t entry = {static_cast<uint8_t>(state.curdepth), res};
         state.trans_table[board] = entry;
     }
@@ -403,8 +399,8 @@ float score_toplevel_move(board_t board, int move) {
     elapsed = (finish.tv_sec - start.tv_sec);
     elapsed += (finish.tv_usec - start.tv_usec) / 1000000.0;
 
-    //ZW printf("Move %d: result %f: eval'd %ld moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
-    //ZW    state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
+    printf("Move %d: result %f: eval'd %ld moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
+        state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
 
     return res;
 }
@@ -532,6 +528,7 @@ int main() {
     play_game(find_best_move);
 }
 
+// WASM entrypoint used by the JS worker.
 extern "C" DLL_PUBLIC float JS_sc(
     int mindepth,
     int smartness,
