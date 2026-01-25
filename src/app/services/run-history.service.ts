@@ -35,4 +35,8 @@ export class RunHistoryService {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
   }
+
+  clearRuns(): void {
+    localStorage.removeItem(STORAGE_KEY);
+  }
 }

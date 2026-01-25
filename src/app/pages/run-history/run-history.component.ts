@@ -17,12 +17,31 @@ export class RunHistoryComponent implements OnInit {
   runs: RunSummary[] = [];
   sortKey: SortKey = 'score';
   sortDir: SortDir = 'desc';
+  readonly boundaryScore = 387000;
 
   constructor(private history: RunHistoryService) {}
 
   ngOnInit(): void {
     this.runs = this.history.getRuns();
     this.applySort();
+  }
+
+  clearHistory(): void {
+    this.history.clearRuns();
+    this.runs = [];
+  }
+
+  get crossedCount(): number {
+    return this.runs.filter((run) => run.score >= this.boundaryScore).length;
+  }
+
+  get totalCount(): number {
+    return this.runs.length;
+  }
+
+  get crossedPercent(): number {
+    if (this.totalCount === 0) return 0;
+    return Math.round((this.crossedCount / this.totalCount) * 1000) / 10;
   }
 
   sortBy(key: SortKey): void {

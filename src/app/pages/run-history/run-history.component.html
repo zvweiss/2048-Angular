@@ -2,6 +2,15 @@
 
 <div class="history-container">
   <h2>AI Run History</h2>
+  <div class="summary">
+    <span>
+      Crossed {{ boundaryScore }}: {{ crossedCount }}/{{ totalCount }}
+      ({{ crossedPercent }}%)
+    </span>
+    <button class="clear-btn" (click)="clearHistory()" *ngIf="totalCount > 0">
+      Clear History
+    </button>
+  </div>
 
   <div class="table-wrap" *ngIf="runs.length > 0; else emptyState">
     <table>

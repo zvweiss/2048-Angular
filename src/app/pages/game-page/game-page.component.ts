@@ -46,6 +46,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
   gameOverDismissed = false;
   winFromAiRun = false;
   aiSpeedMs = 5;
+  aiMindepth = 3;
+  aiSmartness = 6;
+  private aiAutoBoosted = false;
   aiSummary = '';
   readonly debugMode = false;
   private aiIntervalId: number | null = null;
@@ -75,6 +78,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.gameOver$ = this.game.gameOver$;
     this.game.startNewGame();
     this.winFromAiRun = false;
+    const config = this.ai.getWrkrConfig();
+    this.aiMindepth = config.mindepth;
+    this.aiSmartness = config.smartness;
+    this.aiAutoBoosted = false;
 
     this.gameOver$
       .pipe(takeUntil(this.destroy$))
@@ -99,7 +106,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.stopAi();
+    this.stopAi('stop');
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -145,6 +152,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.startAiLoop();
   }
 
+  updateAiConfig(): void {
+    this.ai.updateWrkrConfig({
+      mindepth: this.aiMindepth,
+      smartness: this.aiSmartness,
+    });
+  }
+
   async stepAi(): Promise<void> {
     if (this.aiStepInFlight) return;
     if (this.gameOverActive) {
@@ -154,9 +168,26 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiStepInFlight = true;
     const runToken = this.aiRunToken;
     const board = this.game.getBoardSnapshot();
+    const emptyCount = this.countEmptyCells(board);
+    const score = this.game.getScoreSnapshot();
+    const maxTile = Math.max(...board.flat());
+    if (!this.aiAutoBoosted && score >= 350000) {
+      this.aiAutoBoosted = true;
+      this.aiMindepth = Math.max(this.aiMindepth, 4);
+      this.aiSmartness = Math.max(this.aiSmartness, 8);
+      this.updateAiConfig();
+      const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+      console.log(message);
+      this.debug.log(message);
+    }
+    if (score >= 320000 && emptyCount <= 5) {
+      const message = `AI notice: emptyCells=${emptyCount}`;
+      console.log(message);
+      this.debug.log(message);
+    }
     try {
       const nextMove = await this.ai.getMove(board);
-      if (runToken !== this.aiRunToken || !this.aiRunning) {
+      if (runToken !== this.aiRunToken) {
         return;
       }
       if (!nextMove) {
@@ -167,6 +198,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
     } finally {
       this.aiStepInFlight = false;
     }
+  }
+
+  private countEmptyCells(board: Board): number {
+    let empty = 0;
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell === 0) empty += 1;
+      }
+    }
+    return empty;
   }
 
   private stopAi(reason: 'stop' | 'game-over' = 'stop'): void {
@@ -187,6 +228,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.updateAiSummary(reason);
     }
     this.aiRunning = false;
+
+    if (reason === 'game-over') {
+      // no batch advance in baseline mode
+    }
   }
 
   updateAiSpeed(): void {
@@ -246,6 +291,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiStepInFlight = false;
     this.aiRunToken++;
     this.aiRunLogged = false;
+    this.aiAutoBoosted = false;
     this.aiRunLastStartedAt = Date.now();
     this.aiRunStartMoves = this.game.getMoveCountSnapshot();
     this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
@@ -262,7 +308,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.gameOverDismissed = false;
     this.winFromAiRun = false;
     this.aiRunLogged = false;
+    this.aiAutoBoosted = false;
   }
+
 
   @HostListener('window:keydown', ['$event'])
   handleKeyDown(event: KeyboardEvent) {

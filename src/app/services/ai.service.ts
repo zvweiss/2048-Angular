@@ -6,9 +6,17 @@ import { WrkrService } from './wrkr.service';
 
 @Injectable({ providedIn: 'root' })
 export class AiService {
-  private readonly wrkrConfig = { mindepth: 2, smartness: 5 };
+  private wrkrConfig = { mindepth: 3, smartness: 6 };
 
   constructor(private wrkr: WrkrService) {}
+
+  getWrkrConfig(): { mindepth: number; smartness: number } {
+    return { ...this.wrkrConfig };
+  }
+
+  updateWrkrConfig(config: { mindepth: number; smartness: number }): void {
+    this.wrkrConfig = { ...config };
+  }
 
   async getMove(board: Board): Promise<Direction | null> {
     if (!this.wrkr.isAvailable()) {

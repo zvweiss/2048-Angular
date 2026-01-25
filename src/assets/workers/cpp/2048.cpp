@@ -309,8 +309,9 @@ static float score_board(board_t board) {
 // Statistics and controls
 // cprob: cumulative probability
 // don't recurse into a node with a cprob less than this threshold
-static const float CPROB_THRESH_BASE = 0.0001f;
-static const int CACHE_DEPTH_LIMIT  = 15;
+static const float CPROB_THRESH_BASE = 0.0003f;
+static const int CACHE_DEPTH_LIMIT  = 8;
+static const size_t CACHE_SIZE_LIMIT = 100000;
 
 static float score_tilechoose_node(eval_state &state, board_t board, float cprob) {
     if (cprob < CPROB_THRESH_BASE || state.curdepth >= state.depth_limit) {
@@ -352,6 +353,9 @@ static float score_tilechoose_node(eval_state &state, board_t board, float cprob
     res = res / num_open;
 
     if (state.curdepth < CACHE_DEPTH_LIMIT) {
+        if (state.trans_table.size() > CACHE_SIZE_LIMIT) {
+            state.trans_table.clear();
+        }
         trans_table_entry_t entry = {static_cast<uint8_t>(state.curdepth), res};
         state.trans_table[board] = entry;
     }
@@ -526,4 +530,31 @@ void play_game(get_move_func_t get_move) {
 int main() {
     init_tables();
     play_game(find_best_move);
+}
+
+extern "C" DLL_PUBLIC float JS_sc(
+    int mindepth,
+    int smartness,
+    int move,
+    uint16_t col1,
+    uint16_t col2,
+    uint16_t col3,
+    uint16_t col4
+) {
+    board_t board = 0;
+    uint16_t cols[4] = {col1, col2, col3, col4};
+    for (int c = 0; c < 4; c++) {
+        for (int r = 0; r < 4; r++) {
+            uint16_t nibble = (cols[c] >> (r * 4)) & 0xF;
+            board |= (board_t)nibble << (4 * (4 * r + c));
+        }
+    }
+
+    eval_state state;
+    int distinct = count_distinct_tiles(board);
+    int baseDepth = std::max(3, distinct - 2);
+    int smartBoost = std::max(0, smartness - 5);
+    state.depth_limit = std::max(mindepth, baseDepth + smartBoost);
+
+    return _score_toplevel_move(state, board, move);
 }
