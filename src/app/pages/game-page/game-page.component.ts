@@ -5,7 +5,8 @@
 
 import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Observable, Subject, takeUntil } from 'rxjs';
+import { NavigationEnd, Router } from '@angular/router';
+import { Observable, Subject, filter, takeUntil } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { GameService } from '../../services/game.service';
 import { AiService } from '../../services/ai.service';
@@ -46,9 +47,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
   gameOverDismissed = false;
   winFromAiRun = false;
   aiSpeedMs = 5;
-  aiMindepth = 3;
-  aiSmartness = 6;
+  aiMindepth = 1;
+  aiSmartness = 1;
   private aiAutoBoosted = false;
+  private aiAutoBoostLocked = false;
   aiSummary = '';
   readonly debugMode = false;
   private aiIntervalId: number | null = null;
@@ -59,13 +61,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private aiRunStartMoves = 0;
   private aiRunAccumulatedMoves = 0;
   private aiRunLogged = false;
+  private aiGameOverHandled = false;
+  private aiPausedForNav = false;
   private destroy$ = new Subject<void>();
 
   constructor(
     public game: GameService,
     private ai: AiService,
     private debug: DebugService,
-    private runHistory: RunHistoryService
+    private runHistory: RunHistoryService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -76,12 +81,24 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.undoAvailable$ = this.game.undoAvailable$;
     this.win$ = this.game.win$;
     this.gameOver$ = this.game.gameOver$;
-    this.game.startNewGame();
-    this.winFromAiRun = false;
+    const isFreshGame = this.game.isBoardEmpty();
+    const isGameOver = this.game.isGameOverActive();
+    if (isFreshGame) {
+      this.game.startNewGame();
+      this.winFromAiRun = false;
+    }
     const config = this.ai.getWrkrConfig();
     this.aiMindepth = config.mindepth;
     this.aiSmartness = config.smartness;
-    this.aiAutoBoosted = false;
+    if (isFreshGame) {
+      this.aiAutoBoosted = false;
+      this.aiAutoBoostLocked = false;
+    } else {
+      this.syncAutoBoostFromState();
+    }
+    if (!isGameOver) {
+      this.startAiLoop(isFreshGame);
+    }
 
     this.gameOver$
       .pipe(takeUntil(this.destroy$))
@@ -90,8 +107,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (isOver) {
           this.gameOverDismissed = false;
         }
-        if (isOver) this.stopAi('game-over');
+        if (isOver && this.aiRunning) this.stopAi('game-over');
       });
+
+    this.router.events
+      .pipe(
+        takeUntil(this.destroy$),
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd)
+      )
+      .subscribe((event) => {
+        this.handleRouteActivation(event.urlAfterRedirects);
+      });
+    this.handleRouteActivation(this.router.url);
 
     this.win$
       .pipe(takeUntil(this.destroy$))
@@ -161,29 +188,34 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   async stepAi(): Promise<void> {
     if (this.aiStepInFlight) return;
-    if (this.gameOverActive) {
-      this.stopAi();
-      return;
-    }
+    if (this.gameOverActive) return;
     this.aiStepInFlight = true;
     const runToken = this.aiRunToken;
     const board = this.game.getBoardSnapshot();
-    const emptyCount = this.countEmptyCells(board);
     const score = this.game.getScoreSnapshot();
     const maxTile = Math.max(...board.flat());
-    if (!this.aiAutoBoosted && score >= 350000) {
-      this.aiAutoBoosted = true;
-      this.aiMindepth = Math.max(this.aiMindepth, 4);
-      this.aiSmartness = Math.max(this.aiSmartness, 8);
-      this.updateAiConfig();
-      const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
-      console.log(message);
-      this.debug.log(message);
-    }
-    if (score >= 320000 && emptyCount <= 5) {
-      const message = `AI notice: emptyCells=${emptyCount}`;
-      console.log(message);
-      this.debug.log(message);
+    if (!this.aiAutoBoostLocked) {
+      if (!this.aiAutoBoosted && score >= 360000) {
+        this.aiAutoBoosted = true;
+        this.aiMindepth = 2;
+        this.aiSmartness = 5;
+        this.updateAiConfig();
+        const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+        console.log(message);
+        this.debug.log(message);
+      } else if (
+        this.aiAutoBoosted &&
+        (score >= 400000 || maxTile >= 32768)
+      ) {
+        this.aiAutoBoosted = false;
+        this.aiAutoBoostLocked = true;
+        this.aiMindepth = 1;
+        this.aiSmartness = 1;
+        this.updateAiConfig();
+        const message = `AI auto-boost reset: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+        console.log(message);
+        this.debug.log(message);
+      }
     }
     try {
       const nextMove = await this.ai.getMove(board);
@@ -200,17 +232,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private countEmptyCells(board: Board): number {
-    let empty = 0;
-    for (const row of board) {
-      for (const cell of row) {
-        if (cell === 0) empty += 1;
-      }
-    }
-    return empty;
-  }
-
   private stopAi(reason: 'stop' | 'game-over' = 'stop'): void {
+    if (reason === 'game-over') {
+      if (this.aiGameOverHandled) return;
+      this.aiGameOverHandled = true;
+    }
     this.aiRunToken++;
     this.aiStepInFlight = false;
     if (this.aiIntervalId !== null) {
@@ -225,7 +251,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.aiRunAccumulatedMoves +=
         this.game.getMoveCountSnapshot() - this.aiRunStartMoves;
       this.aiRunning = false;
-      this.updateAiSummary(reason);
+      const shouldSummarize =
+        reason === 'game-over' || !this.aiGameOverHandled;
+      if (shouldSummarize) {
+        this.updateAiSummary(reason);
+      }
     }
     this.aiRunning = false;
 
@@ -286,15 +316,43 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private startAiLoop(): void {
+  private startAiLoop(resetBoost = true): void {
     this.aiRunning = true;
     this.aiStepInFlight = false;
     this.aiRunToken++;
     this.aiRunLogged = false;
-    this.aiAutoBoosted = false;
+    this.aiGameOverHandled = false;
+    this.aiPausedForNav = false;
+    if (resetBoost) {
+      this.aiAutoBoosted = false;
+      this.aiAutoBoostLocked = false;
+    }
     this.aiRunLastStartedAt = Date.now();
     this.aiRunStartMoves = this.game.getMoveCountSnapshot();
     this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
+  }
+
+  private syncAutoBoostFromState(): void {
+    const board = this.game.getBoardSnapshot();
+    const score = this.game.getScoreSnapshot();
+    const maxTile = board.length ? Math.max(...board.flat()) : 0;
+    if (score >= 400000 || maxTile >= 32768) {
+      this.aiAutoBoostLocked = true;
+      this.aiAutoBoosted = false;
+      this.aiMindepth = 1;
+      this.aiSmartness = 1;
+    } else if (score >= 360000) {
+      this.aiAutoBoostLocked = false;
+      this.aiAutoBoosted = true;
+      this.aiMindepth = 2;
+      this.aiSmartness = 5;
+    } else {
+      this.aiAutoBoostLocked = false;
+      this.aiAutoBoosted = false;
+      this.aiMindepth = 1;
+      this.aiSmartness = 1;
+    }
+    this.updateAiConfig();
   }
 
   private resetAiRunTracking(): void {
@@ -309,6 +367,43 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.winFromAiRun = false;
     this.aiRunLogged = false;
     this.aiAutoBoosted = false;
+    this.aiAutoBoostLocked = false;
+    this.aiGameOverHandled = false;
+    this.aiPausedForNav = false;
+  }
+
+  private pauseAiForNav(): void {
+    if (!this.aiRunning) return;
+    this.aiRunToken++;
+    this.aiStepInFlight = false;
+    if (this.aiIntervalId !== null) {
+      clearInterval(this.aiIntervalId);
+      this.aiIntervalId = null;
+    }
+    if (this.aiRunLastStartedAt !== null) {
+      this.aiRunAccumulatedMs += Date.now() - this.aiRunLastStartedAt;
+      this.aiRunLastStartedAt = null;
+    }
+    this.aiRunAccumulatedMoves +=
+      this.game.getMoveCountSnapshot() - this.aiRunStartMoves;
+    this.aiRunning = false;
+    this.aiPausedForNav = true;
+  }
+
+  private handleRouteActivation(url: string): void {
+    const isRuns = url.startsWith('/runs');
+    if (isRuns) {
+      this.pauseAiForNav();
+      return;
+    }
+    if (this.gameOverActive) return;
+    if (this.aiRunning) return;
+    if (this.aiPausedForNav) {
+      this.startAiLoop(false);
+      return;
+    }
+    const isFreshGame = this.game.isBoardEmpty();
+    this.startAiLoop(isFreshGame);
   }
 
 

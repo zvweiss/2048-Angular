@@ -6,7 +6,7 @@ import { WrkrService } from './wrkr.service';
 
 @Injectable({ providedIn: 'root' })
 export class AiService {
-  private wrkrConfig = { mindepth: 3, smartness: 6 };
+  private wrkrConfig = { mindepth: 1, smartness: 1 };
 
   constructor(private wrkr: WrkrService) {}
 

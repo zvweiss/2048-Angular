@@ -15,19 +15,19 @@ export class GameRouteReuseStrategy implements RouteReuseStrategy {
 
   store(route: ActivatedRouteSnapshot, handle: DetachedRouteHandle): void {
     const key = this.getRouteKey(route);
-    if (key) {
+    if (key !== null) {
       this.storedHandles.set(key, handle);
     }
   }
 
   shouldAttach(route: ActivatedRouteSnapshot): boolean {
     const key = this.getRouteKey(route);
-    return key ? this.storedHandles.has(key) : false;
+    return key !== null ? this.storedHandles.has(key) : false;
   }
 
   retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle | null {
     const key = this.getRouteKey(route);
-    return key ? this.storedHandles.get(key) ?? null : null;
+    return key !== null ? this.storedHandles.get(key) ?? null : null;
   }
 
   shouldReuseRoute(
@@ -43,6 +43,6 @@ export class GameRouteReuseStrategy implements RouteReuseStrategy {
 
   private getRouteKey(route: ActivatedRouteSnapshot): string | null {
     const path = route.routeConfig?.path;
-    return path === '' ? path : null;
+    return path === '' ? 'home' : null;
   }
 }
