@@ -16,8 +16,8 @@ export class WrkrService {
   constructor(private zone: NgZone) {
     if (typeof Worker !== 'undefined') {
       const workerUrl = new URL(
-        '/assets/workers/wasm/wrkr.js',
-        window.location.origin
+        'assets/workers/wasm/wrkr.js',
+        document.baseURI
       );
       this.worker = new Worker(workerUrl);
       this.worker.onmessage = (event: MessageEvent) => {
@@ -27,6 +27,12 @@ export class WrkrService {
           this.pending.delete(funct);
           this.zone.run(() => resolver(res));
         }
+      };
+      this.worker.onerror = () => {
+        this.worker?.terminate();
+        this.worker = null;
+        this.pending.forEach((resolver) => resolver(Number.NEGATIVE_INFINITY));
+        this.pending.clear();
       };
     }
   }
