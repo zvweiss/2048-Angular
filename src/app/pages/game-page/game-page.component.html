@@ -18,6 +18,13 @@
       >
         🚶
       </button>
+      <button
+        (click)="showHint()"
+        [disabled]="aiRunning || gameOverActive || hintLoading"
+        [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
+      >
+        {{ hintIcon() }}
+      </button>
     </div>
 
     <div class="ai-controls">
@@ -36,7 +43,7 @@
       <details class="ai-advanced">
         <summary>AI Settings</summary>
         <label class="ai-speed">
-          AI Speed
+          AI Speed ({{ aiSpeedMs }} ms)
           <input
             type="range"
             min="5"
@@ -45,10 +52,9 @@
             [(ngModel)]="aiSpeedMs"
             (input)="updateAiSpeed()"
           />
-          <span>{{ aiSpeedMs }} ms</span>
         </label>
         <label class="ai-speed">
-          Min Depth
+          Min Depth ({{ aiMindepth }})
           <input
             type="range"
             min="1"
@@ -57,10 +63,9 @@
             [(ngModel)]="aiMindepth"
             (input)="updateAiConfig()"
           />
-          <span>{{ aiMindepth }}</span>
         </label>
         <label class="ai-speed">
-          Smartness
+          Smartness ({{ aiSmartness }})
           <input
             type="range"
             min="1"
@@ -69,12 +74,19 @@
             [(ngModel)]="aiSmartness"
             (input)="updateAiConfig()"
           />
-          <span>{{ aiSmartness }}</span>
         </label>
       </details>
     </div>
 
-    <app-game-board></app-game-board>
+    <div class="board-wrap">
+      <app-game-board></app-game-board>
+      <div class="hint-overlay" *ngIf="hintDirection as dir">
+        <div class="hint-arrow">{{ hintArrow(dir) }}</div>
+        <div class="hint-text">
+          Hint only — you can still move any direction (arrow keys or swipe)
+        </div>
+      </div>
+    </div>
 
     <div
       class="debug-controls"

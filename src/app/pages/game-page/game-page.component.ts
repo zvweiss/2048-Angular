@@ -13,6 +13,7 @@ import { AiService } from '../../services/ai.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { Board } from '../../types/board';
+import { Direction } from '../../types/direction';
 import { DebugPanelComponent } from '../../components/debug-panel/debug-panel.component';
 import { SwipeDirective } from '../../directives/swipe.directive';
 import { DebugService } from '../../services/debug.service';
@@ -64,6 +65,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private aiGameOverHandled = false;
   private aiPausedForNav = false;
   private destroy$ = new Subject<void>();
+  hintDirection: Direction | null = null;
+  hintLoading = false;
+  private hintToken = 0;
 
   constructor(
     public game: GameService,
@@ -139,6 +143,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   move(direction: 'up' | 'down' | 'left' | 'right') {
+    this.clearHint();
     this.game.move(direction);
   }
 
@@ -147,6 +152,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.resetAiRunTracking();
     this.game.startNewGame();
     this.winFromAiRun = false;
+    this.clearHint();
     this.startAiLoop(true);
   }
 
@@ -228,9 +234,57 @@ export class GamePageComponent implements OnInit, OnDestroy {
         return;
       }
       this.game.move(nextMove);
+      this.clearHint();
     } finally {
       this.aiStepInFlight = false;
     }
+  }
+
+  showHint(): void {
+    if (this.aiRunning || this.gameOverActive || this.hintLoading) return;
+    if (this.hintDirection) {
+      this.game.move(this.hintDirection);
+      this.clearHint();
+      return;
+    }
+    const token = ++this.hintToken;
+    this.hintLoading = true;
+    const board = this.game.getBoardSnapshot();
+    this.ai
+      .getMove(board)
+      .then((nextMove) => {
+        if (token !== this.hintToken) return;
+        this.hintDirection = nextMove;
+      })
+      .finally(() => {
+        if (token !== this.hintToken) return;
+        this.hintLoading = false;
+      });
+  }
+
+  hintArrow(direction: Direction): string {
+    switch (direction) {
+      case 'up':
+        return '⬆️';
+      case 'down':
+        return '⬇️';
+      case 'left':
+        return '⬅️';
+      case 'right':
+        return '➡️';
+    }
+  }
+
+  hintIcon(): string {
+    if (this.hintLoading) return '⏳';
+    if (this.hintDirection) return this.hintArrow(this.hintDirection);
+    return '💡';
+  }
+
+  private clearHint(): void {
+    this.hintToken++;
+    this.hintDirection = null;
+    this.hintLoading = false;
   }
 
   private stopAi(reason: 'stop' | 'game-over' = 'stop'): void {
@@ -321,6 +375,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiRunning = true;
     this.aiStepInFlight = false;
     this.aiRunToken++;
+    this.clearHint();
     this.aiRunLogged = false;
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
@@ -371,6 +426,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiAutoBoostLocked = false;
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
+    this.clearHint();
   }
 
   private pauseAiForNav(): void {

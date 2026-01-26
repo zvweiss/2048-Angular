@@ -19,7 +19,6 @@
           <th (click)="sortBy('timestamp')">Date/Time</th>
           <th (click)="sortBy('score')">Score</th>
           <th (click)="sortBy('maxTile')">Max Tile</th>
-          <th (click)="sortBy('moves')">Moves</th>
         </tr>
       </thead>
       <tbody>
@@ -27,7 +26,6 @@
           <td>{{ formatTimestamp(run.timestamp) }}</td>
           <td>{{ run.score }}</td>
           <td>{{ run.maxTile }}</td>
-          <td>{{ run.moves }}</td>
         </tr>
       </tbody>
     </table>

@@ -43,6 +43,13 @@
   font-size: 1.02rem;
   padding: 0.4rem 0.7rem;
   flex: 1;
+  background: #eee4da;
+  border: 1px solid #bfae9f;
+  color: #1f150f;
+}
+
+.controls button:disabled {
+  opacity: 0.5;
 }
 
 .ai-controls {
@@ -74,18 +81,13 @@
 
 .ai-controls .ai-speed {
   display: grid;
-  grid-template-columns: 90px 1fr 64px;
+  grid-template-columns: 140px 1fr;
   align-items: center;
   gap: 0.75rem;
 }
 
 .ai-controls .ai-speed input[type='range'] {
   width: 100%;
-}
-
-.ai-controls .ai-speed span {
-  min-width: 4.5rem;
-  text-align: right;
 }
 
 .ai-buttons {
@@ -104,6 +106,8 @@
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   background: #faf7f2;
+  max-height: 38vh;
+  overflow-y: auto;
 }
 
 .ai-advanced summary {
@@ -133,11 +137,45 @@
   margin-bottom: 0.5rem;
 }
 
-app-game-board {
-  display: block;
-  margin: var(--space-1) 0 var(--space-2);
+.board-wrap {
+  position: relative;
   width: var(--board-width);
   max-width: 100%;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+app-game-board {
+  display: block;
+  width: 100%;
+}
+
+.hint-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #1f150f;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  opacity: 0.9;
+  pointer-events: none;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.hint-arrow {
+  font-size: clamp(32px, 10vw, 56px);
+}
+
+.hint-text {
+  font-size: clamp(12px, 3.2vw, 14px);
+  background: rgba(255, 255, 255, 0.95);
+  color: #1f150f;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(191, 174, 159, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .debug-controls {
@@ -157,10 +195,6 @@ app-game-board {
     padding: var(--space-2) var(--space-1);
   }
 
-  .page-container > app-game-board {
-    order: 2;
-  }
-
   .page-container > .controls {
     order: 3;
   }
@@ -169,8 +203,8 @@ app-game-board {
     order: 4;
   }
 
-  .page-container > .ai-summary {
-    order: 5;
+  .page-container > .board-wrap {
+    order: 2;
   }
 
   .controls {
@@ -185,10 +219,6 @@ app-game-board {
   .ai-controls .ai-speed {
     grid-template-columns: 1fr;
     justify-items: stretch;
-  }
-
-  .ai-controls .ai-speed span {
-    text-align: left;
   }
 
   .ai-buttons {

@@ -13,14 +13,7 @@
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 12px;
   min-width: 0;
-}
-
-.logo {
-  font-size: 1.2rem;
-  font-weight: bold;
-  white-space: nowrap;
 }
 
 .nav-scores {
@@ -58,10 +51,6 @@
 @media (max-width: 520px) {
   .navbar {
     padding: 8px 12px;
-  }
-
-  .logo {
-    font-size: 1rem;
   }
 
   .best-chip {
