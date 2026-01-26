@@ -19,16 +19,19 @@
 
     <div class="controls">
       <button (click)="restart()">🔄</button>
-      <button (click)="undo()" [disabled]="!(undoAvailable$ | async)">↩️</button>
+      <button (click)="toggleAiRun()" [disabled]="gameOverActive">
+        {{ aiRunning ? 'Stop AI' : 'Run AI' }}
+      </button>
     </div>
 
     <div class="ai-controls">
       <div class="ai-primary">
         <div class="ai-buttons">
-          <button (click)="toggleAiRun()" [disabled]="gameOverActive">
-            {{ aiRunning ? 'Stop AI' : 'Run AI' }}
-          </button>
-          <button (click)="stepAi()" [disabled]="aiRunning || gameOverActive">
+          <button
+            class="ai-step-primary"
+            (click)="stepAi()"
+            [disabled]="aiRunning || gameOverActive"
+          >
             Single Step
           </button>
         </div>
@@ -36,6 +39,13 @@
 
       <details class="ai-advanced">
         <summary>AI Settings</summary>
+        <button
+          class="ai-step-secondary"
+          (click)="stepAi()"
+          [disabled]="aiRunning || gameOverActive"
+        >
+          Single Step
+        </button>
         <label class="ai-speed">
           AI Speed
           <input

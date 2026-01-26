@@ -16,6 +16,9 @@
   --board-width: calc(
     (4 * var(--tile-size)) + (3 * var(--tile-gap)) + (2 * var(--board-pad))
   );
+  --space-1: 0.3rem;
+  --space-2: 0.6rem;
+  --space-3: 0.9rem;
 }
 
 .page-container {
@@ -29,8 +32,8 @@
 .score-container {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-  margin-bottom: 0.75rem;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
   width: var(--board-width);
   max-width: 100%;
 }
@@ -40,13 +43,13 @@
   background: #bbada0;
   color: #2a1a10;
   font-weight: bold;
-  padding: 0.5rem;
+  padding: 0.4rem;
   text-align: center;
   border-radius: 5px;
 }
 
 .controls {
-  margin: 0.75rem 0;
+  margin: var(--space-1) 0 var(--space-2);
   display: flex;
   flex-direction: row;
   gap: 0.5rem;
@@ -56,23 +59,27 @@
 }
 
 .controls button {
-  font-size: 1.1rem;
-  padding: 0.45rem 0.9rem;
+  font-size: 1.02rem;
+  padding: 0.4rem 0.7rem;
 }
 
 .ai-controls {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-1);
   width: var(--board-width);
   max-width: 100%;
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-1);
 }
 
 .ai-primary {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: var(--space-1);
+}
+
+.ai-step-primary {
+  display: none;
 }
 
 .ai-controls label {
@@ -117,6 +124,14 @@
   background: #faf7f2;
 }
 
+.ai-step-secondary {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--space-1);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.95rem;
+}
+
 .ai-advanced summary {
   font-weight: 600;
   cursor: pointer;
@@ -146,7 +161,7 @@
 
 app-game-board {
   display: block;
-  margin: 1rem 0;
+  margin: var(--space-1) 0 var(--space-2);
   width: var(--board-width);
   max-width: 100%;
 }
@@ -178,11 +193,27 @@ app-game-board {
 
 @media (max-width: 600px) {
   .game-container {
-    padding: 0.75rem 0.5rem;
+    padding: var(--space-2) var(--space-1);
   }
 
   .score-container {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .page-container > app-game-board {
+    order: 2;
+  }
+
+  .page-container > .controls {
+    order: 3;
+  }
+
+  .page-container > .ai-controls {
+    order: 4;
+  }
+
+  .page-container > .ai-summary {
+    order: 5;
   }
 
   .controls {
@@ -205,6 +236,29 @@ app-game-board {
 
   .ai-buttons {
     flex-direction: column;
+  }
+
+  .ai-step-primary {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .score-container {
+    gap: 0.35rem;
+  }
+
+  .score-box {
+    padding: 0.35rem;
+    font-size: 0.85rem;
+  }
+
+  .controls button {
+    font-size: 1rem;
+  }
+
+  .ai-controls {
+    gap: var(--space-1);
   }
 }
 
