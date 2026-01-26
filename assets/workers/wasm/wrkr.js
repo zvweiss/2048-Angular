@@ -1,5 +1,6 @@
 /* eslint-disable */
-importScripts('/assets/workers/wasm/2048.js');
+const baseUrl = new URL('.', self.location.href).href;
+importScripts(new URL('2048.js', baseUrl).href);
 
 let modulePromise = null;
 let moduleInstance = null;
@@ -8,7 +9,7 @@ const pendingMessages = [];
 function ensureModule() {
   if (!modulePromise) {
     modulePromise = create2048Module({
-      locateFile: (path) => `/assets/workers/wasm/${path}`,
+      locateFile: (path) => new URL(path, baseUrl).href,
     }).then((module) => {
       moduleInstance = module;
       moduleInstance._init_tables();
