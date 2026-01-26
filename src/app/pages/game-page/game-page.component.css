@@ -10,7 +10,12 @@
 }
 
 :host {
-  --board-width: 370px;
+  --tile-size: clamp(56px, 18vw, 80px);
+  --tile-gap: clamp(6px, 2.2vw, 10px);
+  --board-pad: clamp(6px, 2.2vw, 10px);
+  --board-width: calc(
+    (4 * var(--tile-size)) + (3 * var(--tile-gap)) + (2 * var(--board-pad))
+  );
 }
 
 .page-container {
@@ -22,11 +27,10 @@
 }
 
 .score-container {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
   width: var(--board-width);
   max-width: 100%;
 }
@@ -42,7 +46,7 @@
 }
 
 .controls {
-  margin: 1rem 0;
+  margin: 0.75rem 0;
   display: flex;
   flex-direction: row;
   gap: 0.5rem;
@@ -52,8 +56,8 @@
 }
 
 .controls button {
-  font-size: 1.2rem;
-  padding: 0.5rem 1rem;
+  font-size: 1.1rem;
+  padding: 0.45rem 0.9rem;
 }
 
 .ai-controls {
@@ -63,6 +67,12 @@
   width: var(--board-width);
   max-width: 100%;
   margin-bottom: 1rem;
+}
+
+.ai-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
 .ai-controls label {
@@ -75,7 +85,7 @@
 
 .ai-controls .ai-speed {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 90px 1fr 64px;
   align-items: center;
   gap: 0.75rem;
 }
@@ -98,6 +108,40 @@
   flex: 1;
   font-size: 1rem;
   padding: 0.5rem 0.75rem;
+}
+
+.ai-advanced {
+  border: 1px solid #ddd3c7;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  background: #faf7f2;
+}
+
+.ai-advanced summary {
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-advanced summary::after {
+  content: '▾';
+  font-size: 0.9rem;
+  transition: transform 0.15s ease;
+}
+
+.ai-advanced[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.ai-advanced[open] summary {
+  margin-bottom: 0.5rem;
 }
 
 app-game-board {
@@ -133,9 +177,12 @@ app-game-board {
 }
 
 @media (max-width: 600px) {
+  .game-container {
+    padding: 0.75rem 0.5rem;
+  }
+
   .score-container {
-    flex-direction: column;
-    align-items: center;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .controls {

@@ -23,50 +23,56 @@
     </div>
 
     <div class="ai-controls">
-      <label class="ai-speed">
-        AI Speed
-        <input
-          type="range"
-          min="5"
-          max="1000"
-          step="10"
-          [(ngModel)]="aiSpeedMs"
-          (input)="updateAiSpeed()"
-        />
-        <span>{{ aiSpeedMs }} ms</span>
-      </label>
-      <label class="ai-speed">
-        Min Depth
-        <input
-          type="range"
-          min="1"
-          max="6"
-          step="1"
-          [(ngModel)]="aiMindepth"
-          (input)="updateAiConfig()"
-        />
-        <span>{{ aiMindepth }}</span>
-      </label>
-      <label class="ai-speed">
-        Smartness
-        <input
-          type="range"
-          min="1"
-          max="10"
-          step="1"
-          [(ngModel)]="aiSmartness"
-          (input)="updateAiConfig()"
-        />
-        <span>{{ aiSmartness }}</span>
-      </label>
-      <div class="ai-buttons">
-        <button (click)="toggleAiRun()" [disabled]="gameOverActive">
-          {{ aiRunning ? 'Stop AI' : 'Run AI' }}
-        </button>
-        <button (click)="stepAi()" [disabled]="aiRunning || gameOverActive">
-          Single Step
-        </button>
+      <div class="ai-primary">
+        <div class="ai-buttons">
+          <button (click)="toggleAiRun()" [disabled]="gameOverActive">
+            {{ aiRunning ? 'Stop AI' : 'Run AI' }}
+          </button>
+          <button (click)="stepAi()" [disabled]="aiRunning || gameOverActive">
+            Single Step
+          </button>
+        </div>
       </div>
+
+      <details class="ai-advanced">
+        <summary>AI Settings</summary>
+        <label class="ai-speed">
+          AI Speed
+          <input
+            type="range"
+            min="5"
+            max="1000"
+            step="10"
+            [(ngModel)]="aiSpeedMs"
+            (input)="updateAiSpeed()"
+          />
+          <span>{{ aiSpeedMs }} ms</span>
+        </label>
+        <label class="ai-speed">
+          Min Depth
+          <input
+            type="range"
+            min="1"
+            max="6"
+            step="1"
+            [(ngModel)]="aiMindepth"
+            (input)="updateAiConfig()"
+          />
+          <span>{{ aiMindepth }}</span>
+        </label>
+        <label class="ai-speed">
+          Smartness
+          <input
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            [(ngModel)]="aiSmartness"
+            (input)="updateAiConfig()"
+          />
+          <span>{{ aiSmartness }}</span>
+        </label>
+      </details>
     </div>
 
     <app-game-board></app-game-board>

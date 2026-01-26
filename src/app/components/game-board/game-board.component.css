@@ -1,9 +1,9 @@
 .board {
   display: grid;
   grid-template-rows: repeat(4, 1fr);
-  gap: 10px;
+  gap: var(--tile-gap);
   background-color: #bbada0;
-  padding: 10px;
+  padding: var(--board-pad);
   border-radius: 10px;
   width: fit-content;
   margin: auto;
@@ -13,15 +13,13 @@
 .row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: var(--tile-gap);
 }
 
 .tile {
-  width: 80px;
-  height: 80px;
-  /* width: 60px;
-  height: 60px; */
-  font-size: 24px;
+  width: var(--tile-size);
+  height: var(--tile-size);
+  font-size: clamp(20px, 5vw, 24px);
   color: #776e65;
   display: flex;
   justify-content: center;
@@ -35,20 +33,20 @@
 .tile-2 {
   /* background-color: #eee4da; */
   background: #eee4da;
-  font-size: 50px;
+  font-size: clamp(26px, 7vw, 50px);
 }
 
 .tile-4 {
   /* background-color: #ede0c8; */
   background: #ede0c8;
-  font-size: 50px;
+  font-size: clamp(26px, 7vw, 50px);
 }
 
 .tile-8 {
   /* background-color: #f2b179;
   color: #f9f6f2; */
   background: #edd8c8;
-  font-size: 50px;
+  font-size: clamp(26px, 7vw, 50px);
 }
 
 .tile-16 {
@@ -56,7 +54,7 @@
   color: #f9f6f2; */
   /* background: #e9a683; */
   background: #f5e5b6;
-  font-size: 47px;
+  font-size: clamp(24px, 6.5vw, 47px);
 }
 
 .tile-32 {
@@ -66,7 +64,7 @@
   color: #f9f6f2; */
   /* background: #df8351; */
   background: #f7e3a6;
-  font-size: 47px;
+  font-size: clamp(24px, 6.5vw, 47px);
 }
 
 .tile-64 {
@@ -76,7 +74,7 @@
   background: #f65e3b; */
   /* background: #e87e45; */
   background: #f0db9a;
-  font-size: 47px;
+  font-size: clamp(24px, 6.5vw, 47px);
 }
 
 .tile-128 {
@@ -86,7 +84,7 @@
   /* background: #edcf72; */
   /* background: #dd2d21; */
   background: #b51206;
-  font-size: 44px;
+  font-size: clamp(22px, 6vw, 44px);
 }
 
 .tile-256 {
@@ -95,54 +93,54 @@
   color: #f9f6f2;
   /* background: #e62618; */
   background: #b51206;
-  font-size: 44px;
+  font-size: clamp(22px, 6vw, 44px);
 }
 
 .tile-512 {
   color: #f9f6f2;
   /* background: #edc850; */
   background: #b51206;
-  font-size: 44px;
+  font-size: clamp(22px, 6vw, 44px);
 }
 
 .tile-1024 {
   color: rgb(255, 255, 255);
   background: rgba(128, 128, 128);
-  font-size: 36px;
+  font-size: clamp(18px, 5.5vw, 36px);
 }
 
 .tile-2048 {
   color: rgb(255, 255, 255);
   background: rgb(98, 98, 98);
-  font-size: 36px;
+  font-size: clamp(18px, 5.5vw, 36px);
 }
 
 .tile-4096 {
   color: rgb(255, 255, 255);
   background: rgb(68, 68, 68);
-  font-size: 36px;
+  font-size: clamp(18px, 5.5vw, 36px);
 }
 
 .tile-8192 {
   color: rgb(255, 255, 255);
   background: rgb(0, 0, 0);
-  font-size: 36px;
+  font-size: clamp(18px, 5.5vw, 36px);
 }
 
 .tile-16384 {
   color: rgb(255, 255, 255);
   background: rgba(0, 0, 0);
-  font-size: 32px;
+  font-size: clamp(16px, 5vw, 32px);
 }
 
 .tile-32768 {
   color: rgb(255, 255, 255);
   background: rgba(0, 0, 0);
-  font-size: 32px;
+  font-size: clamp(16px, 5vw, 32px);
 }
 
 .tile.tile-super {
   color: rgb(255, 255, 255);
   background: rgba(0, 0, 0);
-  font-size: 32px;
+  font-size: clamp(16px, 5vw, 32px);
 }
