@@ -147,6 +147,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.resetAiRunTracking();
     this.game.startNewGame();
     this.winFromAiRun = false;
+    this.startAiLoop(true);
   }
 
   undo(): void {

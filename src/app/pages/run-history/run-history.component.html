@@ -20,7 +20,6 @@
           <th (click)="sortBy('score')">Score</th>
           <th (click)="sortBy('maxTile')">Max Tile</th>
           <th (click)="sortBy('moves')">Moves</th>
-          <th (click)="sortBy('durationMs')">Duration</th>
         </tr>
       </thead>
       <tbody>
@@ -29,7 +28,6 @@
           <td>{{ run.score }}</td>
           <td>{{ run.maxTile }}</td>
           <td>{{ run.moves }}</td>
-          <td>{{ formatDuration(run.durationMs) }}</td>
         </tr>
       </tbody>
     </table>
