@@ -1,6 +1,13 @@
 var Module;
 if (!Module) Module = (typeof Module !== "undefined" ? Module : null) || {};
 var moduleOverrides = {};
+var __baseUrl = (typeof self !== "undefined" && self.location) ? new URL(".", self.location.href).href : "";
+if (__baseUrl) {
+  Module["locateFile"] = function (path) {
+    return new URL(path, __baseUrl).href;
+  };
+}
+
 for (var key in Module) {
   if (Module.hasOwnProperty(key)) {
     moduleOverrides[key] = Module[key];
