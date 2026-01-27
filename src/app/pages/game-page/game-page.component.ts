@@ -466,18 +466,21 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   @HostListener('window:keydown', ['$event'])
   handleKeyDown(event: KeyboardEvent) {
-    console.log('Key pressed:', event.key); // Debug line
     switch (event.key) {
       case 'ArrowUp':
+        event.preventDefault();
         this.move('up');
         break;
       case 'ArrowDown':
+        event.preventDefault();
         this.move('down');
         break;
       case 'ArrowLeft':
+        event.preventDefault();
         this.move('left');
         break;
       case 'ArrowRight':
+        event.preventDefault();
         this.move('right');
         break;
     }

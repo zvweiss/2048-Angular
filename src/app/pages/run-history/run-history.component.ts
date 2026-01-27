@@ -55,7 +55,13 @@ export class RunHistoryComponent implements OnInit {
   }
 
   formatTimestamp(ts: number): string {
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   }
 
   formatDuration(ms: number): string {

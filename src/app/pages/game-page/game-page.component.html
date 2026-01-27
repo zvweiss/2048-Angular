@@ -3,28 +3,40 @@
 <div class="game-container">
   <div class="page-container" appSwipe (swipe)="move($event)">
     <div class="controls">
-      <button (click)="restart()" title="Restart game">🔄</button>
-      <button
-        (click)="toggleAiRun()"
-        [disabled]="gameOverActive"
-        [title]="aiRunning ? 'Stop AI' : 'Run AI'"
-      >
-        {{ aiRunning ? '🔴' : '🟢' }}
-      </button>
-      <button
-        (click)="stepAi()"
-        [disabled]="aiRunning || gameOverActive"
-        [attr.title]="aiRunning || gameOverActive ? null : 'Single Step'"
-      >
-        🚶
-      </button>
-      <button
-        (click)="showHint()"
-        [disabled]="aiRunning || gameOverActive || hintLoading"
-        [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
-      >
-        {{ hintIcon() }}
-      </button>
+      <div class="control-item">
+        <button (click)="restart()" title="Restart game">🔄</button>
+        <span class="control-label">Restart</span>
+      </div>
+      <div class="control-item">
+        <button
+          (click)="toggleAiRun()"
+          [disabled]="gameOverActive"
+          [title]="aiRunning ? 'Stop AI' : 'Run AI'"
+        >
+          {{ aiRunning ? '🔴' : '🟢' }}
+        </button>
+        <span class="control-label">Run/Stop</span>
+      </div>
+      <div class="control-item">
+        <button
+          (click)="stepAi()"
+          [disabled]="aiRunning || gameOverActive"
+          [attr.title]="aiRunning || gameOverActive ? null : 'Single Step'"
+        >
+          🚶
+        </button>
+        <span class="control-label">Step</span>
+      </div>
+      <div class="control-item">
+        <button
+          (click)="showHint()"
+          [disabled]="aiRunning || gameOverActive || hintLoading"
+          [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
+        >
+          {{ hintIcon() }}
+        </button>
+        <span class="control-label">Hint</span>
+      </div>
     </div>
 
     <div class="ai-controls">
@@ -84,8 +96,9 @@
         <div class="hint-arrow">{{ hintArrow(dir) }}</div>
       </div>
     </div>
-    <div class="hint-caption" *ngIf="hintDirection">
-      Hint only — you can still move any direction (arrow keys or swipe)
+    <div class="hint-caption" [class.is-visible]="hintDirection">
+      <span class="hint-desktop">Hint only — you can still move any direction (arrow keys)</span>
+      <span class="hint-mobile">Hint only — you can still move any direction (swipe)</span>
     </div>
 
     <div
