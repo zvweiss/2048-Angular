@@ -62,6 +62,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private aiAutoBoosted = false;
   private aiAutoBoostLocked = false;
   private autoBoostStage = 0;
+  private useTestBoostThresholds = false;
   aiSummary = '';
   readonly debugMode = false;
   private aiIntervalId: number | null = null;
@@ -445,7 +446,25 @@ export class GamePageComponent implements OnInit, OnDestroy {
     maxTile: number,
     suppressLog = false
   ): void {
-    if (maxTile >= 32768) {
+    const boost = this.useTestBoostThresholds
+      ? {
+          t16384: 1024,
+          t8192: 512,
+          t4096: 256,
+          t2048: 128,
+          t1024: 64,
+          t32768: 2048,
+        }
+      : {
+          t16384: 16384,
+          t8192: 8192,
+          t4096: 4096,
+          t2048: 2048,
+          t1024: 1024,
+          t32768: 32768,
+        };
+
+    if (maxTile >= boost.t32768) {
       if (this.aiMindepth !== 2 || this.aiSmartness !== 5) {
         this.aiMindepth = 2;
         this.aiSmartness = 5;
@@ -462,11 +481,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (cell > 0) tiles.add(cell);
       }
     }
-    const has16384 = tiles.has(16384);
-    const has8192 = tiles.has(8192);
-    const has4096 = tiles.has(4096);
-    const has2048 = tiles.has(2048);
-    const has1024 = tiles.has(1024);
+    const has16384 = tiles.has(boost.t16384);
+    const has8192 = tiles.has(boost.t8192);
+    const has4096 = tiles.has(boost.t4096);
+    const has2048 = tiles.has(boost.t2048);
+    const has1024 = tiles.has(boost.t1024);
 
     if (has16384 && has8192 && has4096 && has2048 && has1024) {
       if (this.autoBoostStage < 3) {
