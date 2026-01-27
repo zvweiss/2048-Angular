@@ -82,10 +82,10 @@
       <app-game-board></app-game-board>
       <div class="hint-overlay" *ngIf="hintDirection as dir">
         <div class="hint-arrow">{{ hintArrow(dir) }}</div>
-        <div class="hint-text">
-          Hint only — you can still move any direction (arrow keys or swipe)
-        </div>
       </div>
+    </div>
+    <div class="hint-caption" *ngIf="hintDirection">
+      Hint only — you can still move any direction (arrow keys or swipe)
     </div>
 
     <div
