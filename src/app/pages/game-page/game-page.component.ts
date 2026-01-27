@@ -3,7 +3,14 @@
 // import { GameService } from '../../services/game.service';
 // import { Observable } from 'rxjs';
 
-import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  ElementRef,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
 import { Observable, Subject, filter, takeUntil } from 'rxjs';
@@ -48,10 +55,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
   gameOverDismissed = false;
   winFromAiRun = false;
   aiSpeedMs = 5;
-  aiMindepth = 1;
-  aiSmartness = 1;
+  aiMindepth = 2;
+  aiSmartness = 5;
+  batchTotal = 1;
+  batchRemaining = 1;
   private aiAutoBoosted = false;
   private aiAutoBoostLocked = false;
+  private autoBoostStage = 0;
   aiSummary = '';
   readonly debugMode = false;
   private aiIntervalId: number | null = null;
@@ -68,6 +78,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   hintDirection: Direction | null = null;
   hintLoading = false;
   private hintToken = 0;
+  @ViewChild('aiSettings') aiSettings?: ElementRef<HTMLDetailsElement>;
 
   constructor(
     public game: GameService,
@@ -95,8 +106,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiMindepth = config.mindepth;
     this.aiSmartness = config.smartness;
     if (isFreshGame) {
+      this.applyDefaultAiConfig();
       this.aiAutoBoosted = false;
       this.aiAutoBoostLocked = false;
+      this.autoBoostStage = 0;
     } else {
       this.syncAutoBoostFromState();
     }
@@ -111,7 +124,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (isOver) {
           this.gameOverDismissed = false;
         }
-        if (isOver && this.aiRunning) this.stopAi('game-over');
+        if (isOver && this.aiRunning) {
+          if (this.batchRemaining > 1) {
+            this.stopAi('game-over');
+            this.batchRemaining -= 1;
+            this.game.startNewGame();
+            this.winFromAiRun = false;
+            this.gameOverDismissed = true;
+            this.applyDefaultAiConfig();
+            this.startAiLoop(true, false);
+            return;
+          }
+          this.stopAi('game-over');
+          this.batchRemaining = this.batchTotal;
+        }
       });
 
     this.router.events
@@ -152,6 +178,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.resetAiRunTracking();
     this.game.startNewGame();
     this.winFromAiRun = false;
+    this.applyDefaultAiConfig();
+    this.autoBoostStage = 0;
     this.clearHint();
     this.startAiLoop(true);
   }
@@ -193,36 +221,22 @@ export class GamePageComponent implements OnInit, OnDestroy {
     });
   }
 
+  updateBatchTotal(): void {
+    if (this.batchRemaining < 1) {
+      this.batchRemaining = 1;
+    }
+    this.batchTotal = this.batchRemaining;
+  }
+
   async stepAi(): Promise<void> {
     if (this.aiStepInFlight) return;
     if (this.gameOverActive) return;
     this.aiStepInFlight = true;
     const runToken = this.aiRunToken;
     const board = this.game.getBoardSnapshot();
-    const score = this.game.getScoreSnapshot();
     const maxTile = Math.max(...board.flat());
     if (!this.aiAutoBoostLocked) {
-      if (!this.aiAutoBoosted && score >= 360000) {
-        this.aiAutoBoosted = true;
-        this.aiMindepth = 2;
-        this.aiSmartness = 5;
-        this.updateAiConfig();
-        const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
-        console.log(message);
-        this.debug.log(message);
-      } else if (
-        this.aiAutoBoosted &&
-        (score >= 400000 || maxTile >= 32768)
-      ) {
-        this.aiAutoBoosted = false;
-        this.aiAutoBoostLocked = true;
-        this.aiMindepth = 1;
-        this.aiSmartness = 1;
-        this.updateAiConfig();
-        const message = `AI auto-boost reset: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
-        console.log(message);
-        this.debug.log(message);
-      }
+      this.applyAutoBoostFromTiles(board, maxTile);
     }
     try {
       const nextMove = await this.ai.getMove(board);
@@ -313,6 +327,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
       }
     }
     this.aiRunning = false;
+    if (reason === 'stop') {
+      this.batchRemaining = this.batchTotal;
+    }
 
     if (reason === 'game-over') {
       // no batch advance in baseline mode
@@ -371,7 +388,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private startAiLoop(resetBoost = true): void {
+  private startAiLoop(resetBoost = true, resetBatch = true): void {
     this.aiRunning = true;
     this.aiStepInFlight = false;
     this.aiRunToken++;
@@ -383,6 +400,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.aiAutoBoosted = false;
       this.aiAutoBoostLocked = false;
     }
+    if (resetBatch) {
+      this.batchRemaining = this.batchTotal;
+    }
     this.aiRunLastStartedAt = Date.now();
     this.aiRunStartMoves = this.game.getMoveCountSnapshot();
     this.aiIntervalId = window.setInterval(() => this.stepAi(), this.aiSpeedMs);
@@ -390,25 +410,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   private syncAutoBoostFromState(): void {
     const board = this.game.getBoardSnapshot();
-    const score = this.game.getScoreSnapshot();
     const maxTile = board.length ? Math.max(...board.flat()) : 0;
-    if (score >= 400000 || maxTile >= 32768) {
-      this.aiAutoBoostLocked = true;
-      this.aiAutoBoosted = false;
-      this.aiMindepth = 1;
-      this.aiSmartness = 1;
-    } else if (score >= 360000) {
-      this.aiAutoBoostLocked = false;
-      this.aiAutoBoosted = true;
-      this.aiMindepth = 2;
-      this.aiSmartness = 5;
-    } else {
-      this.aiAutoBoostLocked = false;
-      this.aiAutoBoosted = false;
-      this.aiMindepth = 1;
-      this.aiSmartness = 1;
-    }
-    this.updateAiConfig();
+    this.applyAutoBoostFromTiles(board, maxTile, true);
   }
 
   private resetAiRunTracking(): void {
@@ -427,6 +430,90 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
     this.clearHint();
+    this.batchRemaining = this.batchTotal;
+    this.autoBoostStage = 0;
+  }
+
+  private applyDefaultAiConfig(): void {
+    this.aiMindepth = 2;
+    this.aiSmartness = 5;
+    this.updateAiConfig();
+  }
+
+  private applyAutoBoostFromTiles(
+    board: Board,
+    maxTile: number,
+    suppressLog = false
+  ): void {
+    if (maxTile >= 32768) {
+      if (this.aiMindepth !== 2 || this.aiSmartness !== 5) {
+        this.aiMindepth = 2;
+        this.aiSmartness = 5;
+        this.updateAiConfig();
+      }
+      this.aiAutoBoosted = false;
+      this.aiAutoBoostLocked = true;
+      return;
+    }
+
+    const tiles = new Set<number>();
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell > 0) tiles.add(cell);
+      }
+    }
+    const has16384 = tiles.has(16384);
+    const has8192 = tiles.has(8192);
+    const has4096 = tiles.has(4096);
+    const has2048 = tiles.has(2048);
+    const has1024 = tiles.has(1024);
+
+    if (has16384 && has8192 && has4096 && has2048 && has1024) {
+      if (this.autoBoostStage < 3) {
+        this.autoBoostStage = 3;
+        this.aiMindepth = 5;
+        this.aiSmartness = 8;
+        this.aiAutoBoosted = true;
+        this.updateAiConfig();
+        if (!suppressLog) {
+          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          console.log(message);
+          this.debug.log(message);
+        }
+        return;
+      }
+    } else if (has16384 && has8192 && has4096 && has2048) {
+      if (this.autoBoostStage < 2) {
+        this.autoBoostStage = 2;
+        this.aiMindepth = 3;
+        this.aiSmartness = 8;
+        this.aiAutoBoosted = true;
+        this.updateAiConfig();
+        if (!suppressLog) {
+          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          console.log(message);
+          this.debug.log(message);
+        }
+        return;
+      }
+    } else if (has16384 && has8192 && has4096) {
+      if (this.autoBoostStage < 1) {
+        this.autoBoostStage = 1;
+        this.aiMindepth = 3;
+        this.aiSmartness = 6;
+        this.aiAutoBoosted = true;
+        this.updateAiConfig();
+        if (!suppressLog) {
+          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          console.log(message);
+          this.debug.log(message);
+        }
+        if (this.aiSettings?.nativeElement) {
+          this.aiSettings.nativeElement.open = true;
+        }
+        return;
+      }
+    }
   }
 
   private pauseAiForNav(): void {
@@ -456,7 +543,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (this.gameOverActive) return;
     if (this.aiRunning) return;
     if (this.aiPausedForNav) {
-      this.startAiLoop(false);
+      this.startAiLoop(false, false);
       return;
     }
     const isFreshGame = this.game.isBoardEmpty();
