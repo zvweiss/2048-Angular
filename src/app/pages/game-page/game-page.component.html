@@ -55,40 +55,25 @@
       <details class="ai-advanced" #aiSettings>
         <summary>AI Settings</summary>
         <label class="ai-speed">
-          UI Refresh ({{ aiSpeedMs }} ms)
+          Engine ({{ aiEngine === 'wasm' ? 'WASM' : 'TS' }})
+          <select [(ngModel)]="aiEngine" (change)="updateAiEngine()">
+            <option value="wasm">WASM</option>
+            <option value="ts">TS</option>
+          </select>
+        </label>
+        <label class="ai-speed">
+          <span class="ai-label">UI Refresh ({{ aiSpeedMs }} ms)</span>
           <input
             type="range"
             min="5"
-            max="5000"
+            max="2000"
             step="50"
             [(ngModel)]="aiSpeedMs"
             (input)="updateAiSpeed()"
           />
         </label>
         <label class="ai-speed">
-          Min Depth ({{ aiMindepth }})
-          <input
-            type="range"
-            min="1"
-            max="6"
-            step="1"
-            [(ngModel)]="aiMindepth"
-            (input)="updateAiConfig()"
-          />
-        </label>
-        <label class="ai-speed">
-          Smartness ({{ aiSmartness }})
-          <input
-            type="range"
-            min="1"
-            max="10"
-            step="1"
-            [(ngModel)]="aiSmartness"
-            (input)="updateAiConfig()"
-          />
-        </label>
-        <label class="ai-speed">
-          Batch Remaining ({{ batchRemaining }})
+          <span class="ai-label">Batch Remaining ({{ batchRemaining }})</span>
           <input
             type="range"
             min="1"

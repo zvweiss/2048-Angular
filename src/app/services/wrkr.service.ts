@@ -4,7 +4,6 @@ import { Direction } from '../types/direction';
 
 export type WrkrConfig = {
   mindepth: number;
-  smartness: number;
 };
 
 @Injectable({ providedIn: 'root' })
@@ -51,7 +50,7 @@ export class WrkrService {
     const move = this.directionToMove(direction);
     return this.callWorker({
       mindepth: config.mindepth,
-      smartness: config.smartness,
+      smartness: 5,
       move,
       col1: cols[0],
       col2: cols[1],

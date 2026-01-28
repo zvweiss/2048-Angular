@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "ng": "npx ng",
-    "build:wasm": "bash -lc \"export EMSDK_QUIET=1; source $HOME/emsdk/emsdk_env.sh && emcc src/assets/workers/cpp/2048.cpp -O3 -fno-exceptions -fno-rtti -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME=create2048Module -s ENVIRONMENT=worker -s EXPORTED_FUNCTIONS='[_JS_sc,_init_tables]' -s EXPORTED_RUNTIME_METHODS=[] -s MALLOC=emmalloc -s ALLOW_MEMORY_GROWTH=0 -s INITIAL_MEMORY=256MB -o src/assets/workers/wasm/2048.js\"",
+    "build:wasm": "bash -lc \"export EMSDK_QUIET=1; source $HOME/emsdk/emsdk_env.sh && export EM_CACHE=$PWD/.emscripten-cache && emcc src/assets/workers/cpp/2048.cpp -O3 -fno-exceptions -fno-rtti -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME=create2048Module -s ENVIRONMENT=worker -s EXPORTED_FUNCTIONS='[_JS_sc,_init_tables]' -s EXPORTED_RUNTIME_METHODS=[] -s MALLOC=emmalloc -s ALLOW_MEMORY_GROWTH=0 -s INITIAL_MEMORY=256MB -o src/assets/workers/wasm/2048.js\"",
     "start": "npm run build:wasm && npx ng serve",
     "build": "npm run build:wasm && npx ng build --base-href=/2048-Angular/",
     "build:prod": "npm run build:wasm && npx ng build --configuration production --base-href=/2048-Angular/",
     "deploy": "npm run build:prod && touch dist/2048-angular/browser/.nojekyll && npx gh-pages -d dist/2048-angular/browser --dotfiles",
+    "deploy:valet": "npx ng build --base-href=/ && rsync -a --delete dist/2048-angular/browser/ ~/Sites/2048-Angular/",
     "watch": "npx ng build --watch --configuration development",
     "kill-port": "kill-port 4200",
     "test": "npx ng test"

@@ -96,7 +96,7 @@
 
 .ai-controls .ai-speed {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 180px 1fr;
   align-items: center;
   gap: 0.4rem 0.75rem;
   margin-bottom: calc(var(--space-2) + 0.2rem);
@@ -112,6 +112,16 @@
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
+}
+
+.ai-controls .ai-speed select {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #bfae9f;
+  background: #f6f1ea;
+  color: #1f150f;
+  font-weight: 600;
 }
 
 .ai-controls .ai-speed input[type='range']::-webkit-slider-thumb {
@@ -300,6 +310,10 @@ app-game-board {
     gap: 0.35rem;
   }
 
+  .ai-label {
+    white-space: normal;
+  }
+
   .ai-buttons {
     flex-direction: row;
   }
@@ -345,4 +359,7 @@ app-game-board {
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   text-align: center;
+}
+.ai-label {
+  white-space: nowrap;
 }

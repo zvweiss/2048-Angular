@@ -16,7 +16,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { Observable, Subject, filter, takeUntil } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { GameService } from '../../services/game.service';
-import { AiService } from '../../services/ai.service';
+import { AiEngine, AiService } from '../../services/ai.service';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import { GameBoardComponent } from '../../components/game-board/game-board.component';
 import { Board } from '../../types/board';
@@ -56,7 +56,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   winFromAiRun = false;
   aiSpeedMs = 5;
   aiMindepth = 2;
-  aiSmartness = 5;
+  aiEngine: AiEngine = 'wasm';
   batchTotal = 1;
   batchRemaining = 1;
   private aiAutoBoosted = false;
@@ -105,7 +105,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
     const config = this.ai.getWrkrConfig();
     this.aiMindepth = config.mindepth;
-    this.aiSmartness = config.smartness;
+    this.aiEngine = this.ai.getEngine();
     if (isFreshGame) {
       this.applyDefaultAiConfig();
       this.aiAutoBoosted = false;
@@ -218,8 +218,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
   updateAiConfig(): void {
     this.ai.updateWrkrConfig({
       mindepth: this.aiMindepth,
-      smartness: this.aiSmartness,
     });
+  }
+
+  updateAiEngine(): void {
+    this.ai.setEngine(this.aiEngine);
   }
 
   updateBatchTotal(): void {
@@ -338,6 +341,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   updateAiSpeed(): void {
+    if (this.aiSpeedMs < 50) {
+      this.aiSpeedMs = 5;
+    } else {
+      this.aiSpeedMs = Math.round(this.aiSpeedMs / 50) * 50;
+    }
     if (!this.aiRunning) return;
     if (this.aiIntervalId !== null) {
       clearInterval(this.aiIntervalId);
@@ -437,7 +445,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   private applyDefaultAiConfig(): void {
     this.aiMindepth = 2;
-    this.aiSmartness = 5;
     this.updateAiConfig();
   }
 
@@ -465,9 +472,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
         };
 
     if (maxTile >= boost.t32768) {
-      if (this.aiMindepth !== 2 || this.aiSmartness !== 5) {
+      if (this.aiMindepth !== 2) {
         this.aiMindepth = 2;
-        this.aiSmartness = 5;
         this.updateAiConfig();
       }
       this.aiAutoBoosted = false;
@@ -491,11 +497,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (this.autoBoostStage < 3) {
         this.autoBoostStage = 3;
         this.aiMindepth = 5;
-        this.aiSmartness = 8;
         this.aiAutoBoosted = true;
         this.updateAiConfig();
         if (!suppressLog) {
-          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          const message = `AI auto-boost: mindepth=${this.aiMindepth}`;
           console.log(message);
           this.debug.log(message);
         }
@@ -505,11 +510,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (this.autoBoostStage < 2) {
         this.autoBoostStage = 2;
         this.aiMindepth = 3;
-        this.aiSmartness = 8;
         this.aiAutoBoosted = true;
         this.updateAiConfig();
         if (!suppressLog) {
-          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          const message = `AI auto-boost: mindepth=${this.aiMindepth}`;
           console.log(message);
           this.debug.log(message);
         }
@@ -519,11 +523,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (this.autoBoostStage < 1) {
         this.autoBoostStage = 1;
         this.aiMindepth = 3;
-        this.aiSmartness = 6;
         this.aiAutoBoosted = true;
         this.updateAiConfig();
         if (!suppressLog) {
-          const message = `AI auto-boost: mindepth=${this.aiMindepth} smartness=${this.aiSmartness}`;
+          const message = `AI auto-boost: mindepth=${this.aiMindepth}`;
           console.log(message);
           this.debug.log(message);
         }
@@ -554,8 +557,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   private handleRouteActivation(url: string): void {
-    const isRuns = url.startsWith('/runs');
-    if (isRuns) {
+    const isHome = url === '/' || url.startsWith('/?');
+    if (!isHome) {
       this.pauseAiForNav();
       return;
     }
