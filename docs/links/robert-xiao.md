@@ -1,0 +1,4 @@
+- https://www.robertxiao.ca/hacking/2048-ai/
+- https://www.robertxiao.ca/
+- https://github.com/nneonneo/2048-ai
+- 

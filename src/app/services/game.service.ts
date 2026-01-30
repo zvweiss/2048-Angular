@@ -7,6 +7,9 @@ import { Direction } from '../types/direction';
 @Injectable({ providedIn: 'root' })
 export class GameService {
   private readonly size = 4;
+  private spawnMode: 'normal' | 'record' | 'replay' = 'normal';
+  private spawnLog: { r: number; c: number; value: number }[] = [];
+  private spawnIndex = 0;
 
   private boardSubject = new BehaviorSubject<Board>(this.createEmptyBoard());
   board$ = this.boardSubject.asObservable();
@@ -76,6 +79,7 @@ export class GameService {
   startNewGame(): void {
     this.debug.log('Starting new game...');
     const board = this.createEmptyBoard();
+    this.spawnIndex = 0;
     this.spawnTile(board);
     this.spawnTile(board);
     this.boardSubject.next(board);
@@ -94,10 +98,34 @@ export class GameService {
     this.gameOverSubject.next(false);
   }
 
+  setSpawnMode(mode: 'normal' | 'record' | 'replay'): void {
+    this.spawnMode = mode;
+  }
+
+  getSpawnMode(): 'normal' | 'record' | 'replay' {
+    return this.spawnMode;
+  }
+
+  saveSpawnLog(): void {
+    localStorage.setItem('spawnLog', JSON.stringify(this.spawnLog));
+  }
+
+  loadSpawnLog(): void {
+    const raw = localStorage.getItem('spawnLog');
+    this.spawnLog = raw ? JSON.parse(raw) : [];
+  }
+
+  clearSpawnLog(): void {
+    this.spawnLog = [];
+    this.spawnIndex = 0;
+    localStorage.removeItem('spawnLog');
+  }
+
   move(direction: Direction): void {
-    this.debug.log(`Move: ${direction.toUpperCase()}`);
     const originalBoard = this.boardSubject.value;
-    this.debug.log('Original board:\n' + this.formatBoard(originalBoard));
+    if (this.debugVisible) {
+      this.debug.log('Original board:\n' + this.formatBoard(originalBoard));
+    }
 
     let rotatedBoard: Board;
     switch (direction) {
@@ -273,8 +301,27 @@ export class GameService {
       }
     }
     if (empty.length === 0) return;
+
+    if (this.spawnMode === 'replay') {
+      const next = this.spawnLog[this.spawnIndex++];
+      if (!next) {
+        this.debug.log('Replay spawn log exhausted.');
+        return;
+      }
+      if (board[next.r][next.c] !== 0) {
+        this.debug.log('Replay spawn mismatch: cell not empty.');
+        return;
+      }
+      board[next.r][next.c] = next.value;
+      return;
+    }
+
     const { r, c } = empty[Math.floor(Math.random() * empty.length)];
-    board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    const value = Math.random() < 0.9 ? 2 : 4;
+    board[r][c] = value;
+    if (this.spawnMode === 'record') {
+      this.spawnLog.push({ r, c, value });
+    }
     this.debug.log(`Spawn tile at row ${r}, col ${c}, value ${board[r][c]}`);
     this.debug.log('Board after Spawn:\n' + this.formatBoard(board));
   }

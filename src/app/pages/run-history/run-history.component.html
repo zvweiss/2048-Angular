@@ -3,10 +3,34 @@
 <div class="history-container">
   <h2>AI Run History</h2>
   <div class="summary">
-    <span>
-      Crossed {{ boundaryScore }}: {{ crossedCount }}/{{ totalCount }}
-      ({{ crossedPercent }}%)
+    <span class="engine-metrics">
+      TS 32768: {{ tsReachedCount }}/{{ tsCount }} ({{ tsReachedPercent }}%)
     </span>
+    <span class="engine-metrics">
+      WASM 32768: {{ wasmReachedCount }}/{{ wasmCount }}
+      ({{ wasmReachedPercent }}%)
+    </span>
+    <button
+      class="clear-btn"
+      (click)="exportRunsCsv('ts')"
+      *ngIf="totalCount > 0"
+    >
+      Export TS Runs CSV
+    </button>
+    <button
+      class="clear-btn"
+      (click)="exportRunsCsv('wasm')"
+      *ngIf="totalCount > 0"
+    >
+      Export WASM Runs CSV
+    </button>
+    <button
+      class="clear-btn"
+      (click)="exportConfigCsv()"
+      *ngIf="totalCount > 0"
+    >
+      Export Config CSV
+    </button>
     <button class="clear-btn" (click)="clearHistory()" *ngIf="totalCount > 0">
       Clear History
     </button>
@@ -17,15 +41,29 @@
       <thead>
         <tr>
           <th (click)="sortBy('timestamp')">Date/Time</th>
-          <th (click)="sortBy('score')">Score</th>
-          <th (click)="sortBy('maxTile')">Max Tile</th>
+          <th class="num-col" (click)="sortBy('score')">Score</th>
+          <th class="num-col" (click)="sortBy('maxTile')">Max Tile</th>
+          <th class="num-col" (click)="sortBy('depth')">Depth</th>
+          <th>Top Tiles</th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let run of runs">
+        <tr *ngFor="let run of tsRuns">
           <td>{{ formatTimestamp(run.timestamp) }}</td>
-          <td>{{ run.score }}</td>
-          <td>{{ run.maxTile }}</td>
+          <td class="num-col">{{ run.score }}</td>
+          <td class="num-col">{{ run.maxTile }}</td>
+          <td class="num-col">{{ run.depth ?? '' }}</td>
+          <td>{{ (run.topTiles ?? []).join(', ') }}</td>
+        </tr>
+        <tr class="engine-divider" *ngIf="tsRuns.length && wasmRuns.length">
+          <td colspan="5"></td>
+        </tr>
+        <tr *ngFor="let run of wasmRuns">
+          <td>{{ formatTimestamp(run.timestamp) }}</td>
+          <td class="num-col">{{ run.score }}</td>
+          <td class="num-col">{{ run.maxTile }}</td>
+          <td class="num-col">{{ run.depth ?? '' }}</td>
+          <td>{{ (run.topTiles ?? []).join(', ') }}</td>
         </tr>
       </tbody>
     </table>

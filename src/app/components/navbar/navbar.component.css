@@ -16,11 +16,21 @@
   min-width: 0;
 }
 
+.nav-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .nav-scores {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.engine-percentages {
+  margin-top: 0;
 }
 
 .score-chip {

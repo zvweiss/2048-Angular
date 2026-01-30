@@ -22,6 +22,20 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.engine-metrics {
+  font-weight: 700;
+  white-space: nowrap;
+  background: #d2c3b4;
+  border: 1px solid #b8a797;
+  color: #3a2f25;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .clear-btn {
@@ -58,6 +72,10 @@ td {
   border-bottom: 1px solid #e4dbd0;
 }
 
+.num-col {
+  text-align: right;
+}
+
 th {
   background: #efe7dc;
   cursor: pointer;
@@ -67,6 +85,12 @@ th {
 
 tr:last-child td {
   border-bottom: none;
+}
+
+.engine-divider td {
+  padding: 0;
+  height: 1px;
+  background: #d8cec1;
 }
 
 .empty {

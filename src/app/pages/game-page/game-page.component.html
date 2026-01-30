@@ -61,6 +61,53 @@
             <option value="ts">TS</option>
           </select>
         </label>
+        <div class="ai-spawn-actions">
+          <button type="button" (click)="toggleDebugControls()">
+            {{ showDebugControls ? 'Hide Debug Controls' : 'Show Debug Controls' }}
+          </button>
+        </div>
+        <div *ngIf="showDebugControls">
+          <label class="ai-speed">
+            Spawn Mode ({{ spawnMode }})
+            <select [(ngModel)]="spawnMode" (change)="updateSpawnMode()">
+              <option value="normal">Normal</option>
+              <option value="record">Record</option>
+              <option value="replay">Replay</option>
+            </select>
+          </label>
+          <label class="ai-speed">
+            Compare TS vs WASM
+            <input
+              type="checkbox"
+              [(ngModel)]="aiCompareEnabled"
+              (change)="updateAiCompare()"
+            />
+          </label>
+          <label class="ai-speed">
+            Pause on divergence
+            <input
+              type="checkbox"
+              [(ngModel)]="aiComparePause"
+              (change)="updateAiCompare()"
+            />
+          </label>
+          <label class="ai-speed">
+            Debug AI scores
+            <input
+              type="checkbox"
+              [(ngModel)]="aiDebugEnabled"
+              (change)="updateAiDebug()"
+            />
+          </label>
+          <div class="ai-spawn-actions">
+            <button type="button" (click)="saveSpawnLog()">Save Spawns</button>
+            <button type="button" (click)="loadSpawnLog()">Load Spawns</button>
+            <button type="button" (click)="clearSpawnLog()">Clear Spawns</button>
+          </div>
+          <div class="ai-spawn-actions">
+            <button type="button" (click)="dumpDivergences()">Dump Divergences</button>
+          </div>
+        </div>
         <label class="ai-speed">
           <span class="ai-label">UI Refresh ({{ aiSpeedMs }} ms)</span>
           <input
@@ -72,6 +119,39 @@
             (input)="updateAiSpeed()"
           />
         </label>
+        <ng-container *ngIf="aiEngine === 'ts'">
+          <label class="ai-speed">
+            <span class="ai-label">Depth Cap ({{ aiDepthCap }})</span>
+            <input
+              type="range"
+              min="3"
+              max="8"
+              step="1"
+              [(ngModel)]="aiDepthCap"
+              (input)="updateDepthCap()"
+            />
+          </label>
+          <div class="ai-auto-boost-toggle" *ngIf="autoBoostPaused">
+            <button type="button" (click)="resumeAutoBoost()">Resume Auto-boost</button>
+          </div>
+          <label class="ai-speed">
+            <span class="ai-label">Time Budget ({{ aiTimeBudgetMs }} ms)</span>
+            <input
+              type="range"
+              min="50"
+              max="1500"
+              step="50"
+              [(ngModel)]="aiTimeBudgetMs"
+              (input)="updateTsConfig()"
+            />
+          </label>
+          <div class="ai-boost-status">
+            Fatal saves: {{ aiFatalBoostCount }}
+          </div>
+          <div class="ai-boost-status" *ngIf="aiBoostStatus">
+            {{ aiBoostStatus }}
+          </div>
+        </ng-container>
         <label class="ai-speed">
           <span class="ai-label">Batch Remaining ({{ batchRemaining }})</span>
           <input
