@@ -30,6 +30,7 @@ import {
   boardToRows,
   computeBestMoveBitboardCpp,
   rowsToGrid,
+  computeHeuristicBreakdown,
 } from '../../services/bitboard-core';
 
 @Component({
@@ -64,9 +65,25 @@ export class GamePageComponent implements OnInit, OnDestroy {
   aiMindepth = 2;
   aiDepthCap = 4;
   aiTimeBudgetMs = 250;
-  showDebugControls = false;
+  showDebugControls = true;
   aiBoostStatus = '';
   private aiBoostStatusTimeout: number | null = null;
+  replayParityStatus = '';
+  replaySavedMovesStatus = '';
+  replayRunMovesStatus = '';
+  runIntegrityStatus = '';
+  showRunIntegrityModal = false;
+  runIntegrityIssueDetected = false;
+  spawnStatus = '';
+  tiePauseStatus = '';
+  tiePaused = false;
+  private lastTiePauseMove: number | null = null;
+  private lastTiePauseHash: string | null = null;
+  private skipTiePauseOnce = false;
+  private resumeFromTiePause = false;
+  private lastSpawnMode: 'normal' | 'record' | 'replay' = 'normal';
+  private recordingSaved = false;
+  savedSpawnsAvailable = false;
   aiFatalBoostCount = 0;
   aiEngine: AiEngine = 'ts';
   spawnMode: 'normal' | 'record' | 'replay' = 'normal';
@@ -96,10 +113,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
   hintLoading = false;
   private hintToken = 0;
   private compareEngines = false;
-  private pauseOnDivergence = true;
+  private pauseOnDivergence = false;
   aiCompareEnabled = false;
-  aiComparePause = true;
+  aiComparePause = false;
+  aiComparePauseOnTie = false;
   aiDebugEnabled = false;
+  parityMode = false;
   @ViewChild('aiSettings') aiSettings?: ElementRef<HTMLDetailsElement>;
 
   constructor(
@@ -116,9 +135,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.ai.setDebugAi(this.aiDebugEnabled);
       return `AI debug ${this.aiDebugEnabled ? 'enabled' : 'disabled'}`;
     };
-    (window as any).setAiCompare = (enabled: boolean, pause = true) => {
+    (window as any).setAiCompare = (enabled: boolean, pause = false) => {
       this.aiCompareEnabled = Boolean(enabled);
       this.aiComparePause = Boolean(pause);
+    this.aiComparePauseOnTie = false;
+      this.parityMode = this.aiCompareEnabled;
+      this.updateParityMode();
       this.compareEngines = this.aiCompareEnabled;
       this.pauseOnDivergence = this.aiComparePause;
       return `AI compare ${this.compareEngines ? 'enabled' : 'disabled'}${
@@ -139,6 +161,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const isFreshGame = this.game.isBoardEmpty();
     const isGameOver = this.game.isGameOverActive();
     if (isFreshGame) {
+      this.clearDivergences();
+      this.resetAiRunTrackingForNewGame();
       this.game.startNewGame();
       this.winFromAiRun = false;
     }
@@ -150,8 +174,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiEngine = this.ai.getEngine();
     this.aiDebugEnabled = false;
     this.aiCompareEnabled = false;
-    this.aiComparePause = true;
+    this.aiComparePause = false;
     this.spawnMode = this.game.getSpawnMode();
+    this.clearDivergences();
     if (isFreshGame) {
       this.applyDefaultAiConfig();
       this.aiAutoBoosted = false;
@@ -159,6 +184,22 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.aiAutoBoostManualOverride = false;
       this.aiFatalBoostCount = 0;
       this.autoBoostStage = 0;
+      this.replayParityStatus = '';
+      this.replaySavedMovesStatus = '';
+      this.replayRunMovesStatus = '';
+      this.spawnStatus = '';
+      this.runIntegrityStatus = '';
+      this.showRunIntegrityModal = false;
+      this.runIntegrityIssueDetected = false;
+      this.tiePauseStatus = '';
+      this.tiePaused = false;
+      this.lastTiePauseMove = null;
+      this.lastTiePauseHash = null;
+      this.skipTiePauseOnce = false;
+      this.resumeFromTiePause = false;
+      this.lastSpawnMode = this.spawnMode;
+      this.recordingSaved = false;
+      this.savedSpawnsAvailable = this.hasRecordedSpawns;
       setTimeout(() => {
         if (this.aiSettings?.nativeElement) {
           this.aiSettings.nativeElement.open = true;
@@ -179,7 +220,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (isOver && this.aiRunning) {
           if (this.batchRemaining > 1) {
             this.stopAi('game-over');
+            if (this.runIntegrityIssueDetected) {
+              this.batchRemaining = this.batchTotal;
+              return;
+            }
             this.batchRemaining -= 1;
+            this.clearDivergences();
+            this.resetAiRunTrackingForNewGame(true);
             this.game.startNewGame();
             this.winFromAiRun = false;
             this.gameOverDismissed = true;
@@ -234,13 +281,22 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   restart(): void {
+    if (this.spawnMode === 'record' && this.canSaveSpawns) {
+      const shouldExit = window.confirm(
+        'Exit recording without saving?'
+      );
+      if (!shouldExit) return;
+    }
     this.stopAi('stop');
     this.resetAiRunTracking();
+    this.clearDivergences();
     this.game.startNewGame();
     this.winFromAiRun = false;
     this.applyDefaultAiConfig();
     this.autoBoostStage = 0;
     this.clearHint();
+    this.spawnMode = 'normal';
+    this.updateSpawnMode();
   }
 
   undo(): void {
@@ -307,6 +363,19 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   updateAiEngine(): void {
     this.ai.setEngine(this.aiEngine);
+    if (this.spawnMode === 'record' && this.aiEngine !== 'wasm') {
+      this.spawnMode = 'normal';
+      this.updateSpawnMode();
+    }
+    if (this.aiEngine === 'wasm') {
+      this.aiCompareEnabled = false;
+      this.aiComparePause = false;
+      this.aiComparePauseOnTie = false;
+      this.compareEngines = false;
+      this.pauseOnDivergence = this.aiComparePause;
+      this.parityMode = false;
+      this.updateParityMode();
+    }
   }
 
   get autoBoostPaused(): boolean {
@@ -330,6 +399,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
   updateAiCompare(): void {
     this.compareEngines = this.aiCompareEnabled;
     this.pauseOnDivergence = this.aiComparePause;
+    this.parityMode = this.compareEngines;
+    this.updateParityMode();
     if (this.compareEngines) {
       this.clearDivergences();
     }
@@ -337,6 +408,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   updateAiDebug(): void {
     this.ai.setDebugAi(this.aiDebugEnabled);
+  }
+
+  updateParityMode(): void {
+    if (this.parityMode) {
+      this.aiAutoBoostManualOverride = false;
+      this.aiBoostStatus = '';
+    }
   }
 
   clearDivergences(): void {
@@ -360,20 +438,160 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   updateSpawnMode(): void {
+    const previousMode = this.lastSpawnMode;
+    if (
+      previousMode === 'record' &&
+      this.spawnMode !== 'record' &&
+      !this.recordingSaved &&
+      this.canSaveSpawns
+    ) {
+      window.confirm('Exit recording without saving?');
+      this.spawnMode = 'normal';
+    }
+    if (this.spawnMode === 'record' && this.aiEngine !== 'wasm') {
+      this.spawnMode = 'normal';
+    }
     this.game.setSpawnMode(this.spawnMode);
+    if (this.spawnMode === 'replay') {
+      this.stopAi('stop');
+      this.game.loadSpawnLog();
+      if (
+        this.game.getSpawnLogLength() === 0 ||
+        this.game.getMoveLogLength() === 0
+      ) {
+        this.replayParityStatus = 'Replay data missing. Save spawns first.';
+        this.replaySavedMovesStatus = '';
+        this.replayRunMovesStatus = '';
+        this.spawnStatus = '';
+        this.spawnMode = 'normal';
+        this.game.setSpawnMode(this.spawnMode);
+        this.savedSpawnsAvailable = false;
+        return;
+      }
+      this.replayParityStatus = '';
+      this.replaySavedMovesStatus = `Saved moves: ${this.game.getMoveLogLength()}`;
+      this.replayRunMovesStatus = '';
+      this.spawnStatus = 'Replay ready.';
+      this.tiePauseStatus = '';
+      this.tiePaused = false;
+      this.lastTiePauseMove = null;
+      this.lastTiePauseHash = null;
+      this.skipTiePauseOnce = false;
+      this.resumeFromTiePause = false;
+      this.recordingSaved = true;
+      this.savedSpawnsAvailable = true;
+      if (this.aiEngine === 'ts' && !this.aiCompareEnabled) {
+        this.aiCompareEnabled = true;
+        this.aiComparePause = true;
+        this.aiComparePauseOnTie = false;
+        this.updateAiCompare();
+      }
+      this.clearDivergences();
+      this.resetAiRunTrackingForNewGame();
+      this.game.startNewGame();
+    } else if (this.spawnMode === 'record') {
+      this.stopAi('stop');
+      this.game.clearSpawnLog();
+      this.replayParityStatus = 'Recording new game.';
+      this.replaySavedMovesStatus = '';
+      this.replayRunMovesStatus = '';
+      this.spawnStatus = 'Recording spawns.';
+      this.tiePauseStatus = '';
+      this.tiePaused = false;
+      this.lastTiePauseMove = null;
+      this.lastTiePauseHash = null;
+      this.skipTiePauseOnce = false;
+      this.resumeFromTiePause = false;
+      this.recordingSaved = false;
+      this.savedSpawnsAvailable = false;
+      this.clearDivergences();
+      this.resetAiRunTrackingForNewGame();
+      this.game.startNewGame();
+    } else {
+      this.replayParityStatus = '';
+      this.replaySavedMovesStatus = '';
+      this.replayRunMovesStatus = '';
+      this.spawnStatus = '';
+      this.runIntegrityStatus = '';
+      this.showRunIntegrityModal = false;
+      this.runIntegrityIssueDetected = false;
+    }
+    this.lastSpawnMode = this.spawnMode;
+  }
+
+  get spawnModeLocked(): boolean {
+    return false;
+  }
+
+  get hasRecordedSpawns(): boolean {
+    const savedSpawns = localStorage.getItem('spawnLog');
+    const savedMoves = localStorage.getItem('moveLog');
+    if (savedSpawns && savedMoves) {
+      try {
+        const spawns = JSON.parse(savedSpawns);
+        const moves = JSON.parse(savedMoves);
+        return (
+          Array.isArray(spawns) &&
+          spawns.length > 0 &&
+          Array.isArray(moves) &&
+          moves.length > 0
+        );
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  get canSaveSpawns(): boolean {
+    return this.spawnMode === 'record' && this.game.getMoveLogLength() > 0;
+  }
+
+  get canClearSpawns(): boolean {
+    const inProgress =
+      this.aiRunning ||
+      (!this.gameOverActive && this.game.getMoveCountSnapshot() > 0);
+    return this.savedSpawnsAvailable && !inProgress;
   }
 
   saveSpawnLog(): void {
+    if (this.game.getSpawnLogLength() < 2 || this.game.getMoveLogLength() === 0) {
+      this.replayParityStatus =
+        'No recording found. Switch to Record mode and start a new game.';
+      this.spawnStatus = '';
+      return;
+    }
     this.game.saveSpawnLog();
-  }
-
-  loadSpawnLog(): void {
-    this.game.loadSpawnLog();
+    this.spawnStatus = `Recorded ${this.game.getMoveLogLength()} moves.`;
+    this.tiePauseStatus = '';
+    this.tiePaused = false;
+    this.lastTiePauseMove = null;
+    this.lastTiePauseHash = null;
+    this.skipTiePauseOnce = false;
+    this.resumeFromTiePause = false;
+    this.recordingSaved = true;
+    this.savedSpawnsAvailable = true;
+    this.stopAi('stop');
   }
 
   clearSpawnLog(): void {
     this.game.clearSpawnLog();
+    this.spawnStatus = 'Recording cleared.';
+    this.replayParityStatus = '';
+    this.replaySavedMovesStatus = '';
+    this.replayRunMovesStatus = '';
+    this.tiePauseStatus = '';
+    this.tiePaused = false;
+    this.lastTiePauseMove = null;
+    this.lastTiePauseHash = null;
+    this.skipTiePauseOnce = false;
+    this.resumeFromTiePause = false;
+    this.recordingSaved = false;
+    this.savedSpawnsAvailable = false;
+    this.spawnMode = 'normal';
+    this.updateSpawnMode();
   }
+
 
   updateBatchTotal(): void {
     if (this.batchRemaining < 1) {
@@ -387,16 +605,147 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (this.gameOverActive) return;
     this.aiStepInFlight = true;
     const runToken = this.aiRunToken;
+    if (this.spawnMode === 'replay') {
+      try {
+        const board = this.game.getBoardSnapshot();
+        const skipTieChecks = this.skipTiePauseOnce || this.resumeFromTiePause;
+        if (this.skipTiePauseOnce) {
+          this.skipTiePauseOnce = false;
+        }
+        if (this.resumeFromTiePause) {
+          this.resumeFromTiePause = false;
+        }
+        if (!skipTieChecks && this.aiEngine === 'wasm' && this.aiComparePauseOnTie) {
+          const wasmScores = await this.ai.getWasmScores(board);
+          const wasmBest = this.getBestMoveSet(wasmScores);
+          const moveIndex = this.game.getMoveCountSnapshot();
+          const tieHash = board.flat().join(',');
+          if (
+            wasmBest.size > 1 &&
+            (this.lastTiePauseMove !== moveIndex ||
+              this.lastTiePauseHash !== tieHash)
+          ) {
+            const status =
+              `Tie at move ${moveIndex}: ` +
+              `engine=wasm best=${[...wasmBest].join(', ')} | selected=pending`;
+            this.tiePauseStatus = status;
+            console.log(status);
+            this.lastTiePauseMove = moveIndex;
+            this.lastTiePauseHash = tieHash;
+            this.tiePaused = true;
+            this.resumeFromTiePause = true;
+            this.stopAi('stop');
+            return;
+          }
+        }
+        const replayMove = this.game.getReplayMove();
+        if (!replayMove) {
+          this.stopAi('stop');
+          return;
+        }
+        if (this.compareEngines) {
+          const tsDepthLimit = this.getTsCompareDepthLimit();
+          const tsScores = this.ai.getTsScores(board, tsDepthLimit);
+          const tsMove = this.getBestMoveFromScores(tsScores);
+          const bestMoves = this.getCompareBestMoveSet(tsScores);
+          const replayTie = bestMoves.size > 1 && bestMoves.has(replayMove);
+          if (!skipTieChecks && replayTie && this.aiComparePauseOnTie && tsMove) {
+            const moveIndex = this.game.getMoveCountSnapshot();
+            const tsBest = [...bestMoves];
+            const status =
+              `Tie at move ${moveIndex}: ` +
+              `engine=${this.aiEngine} ` +
+              `best=${tsBest.join(', ')} | selected=${replayMove}`;
+            const tieHash = board.flat().join(',');
+            if (
+              this.lastTiePauseMove !== moveIndex ||
+              this.lastTiePauseHash !== tieHash
+            ) {
+              this.tiePauseStatus = status;
+              console.log(status);
+              this.lastTiePauseMove = moveIndex;
+              this.lastTiePauseHash = tieHash;
+              this.tiePaused = true;
+              this.resumeFromTiePause = true;
+              this.stopAi('stop');
+              return;
+            }
+          }
+          if (!replayTie && tsMove && tsMove !== replayMove) {
+            const wasmScores = await this.ai.getWasmScores(board);
+            this.replayParityStatus = `Replay parity mismatch at move ${this.game.getMoveCountSnapshot()}`;
+            if (this.aiDebugEnabled) {
+              console.log(
+                'Replay parity mismatch:\n' +
+                  board.map((row) => row.map((cell) => (cell ? cell : '.')).join('\t')).join('\n')
+              );
+              console.log(`Replay move: ${replayMove} | TS move: ${tsMove}`);
+              console.log(
+                'Replay mismatch board rows:',
+                board.map((row) => row.slice())
+              );
+              console.log('Replay mismatch row integers:', boardToRows(board));
+              console.log('TS heuristic breakdown:', computeHeuristicBreakdown(board));
+              const rows = boardToRows(board);
+              const directions: Direction[] = ['up', 'down', 'left', 'right'];
+              const perMove: Record<string, ReturnType<typeof computeHeuristicBreakdown>> =
+                {};
+              for (const dir of directions) {
+                const move = applyMove(rows, dir);
+                if (!move.moved) continue;
+                const nextBoard = rowsToGrid(move.rows);
+                perMove[dir] = computeHeuristicBreakdown(nextBoard);
+              }
+              console.log('TS heuristic breakdowns (post-move):', perMove);
+            }
+            const snapshot = {
+              move: this.game.getMoveCountSnapshot(),
+              board,
+              tsScores,
+              wasmScores,
+              tsMove,
+              wasmMove: replayMove,
+              tie: replayTie,
+            };
+            const existing = localStorage.getItem('aiDivergences');
+            const list = existing ? JSON.parse(existing) : [];
+            list.push(snapshot);
+            localStorage.setItem('aiDivergences', JSON.stringify(list));
+            localStorage.setItem('aiDivergence', JSON.stringify(snapshot));
+            if (this.aiDebugEnabled) {
+              console.log('Saved divergence snapshot to localStorage (aiDivergences).');
+            }
+            if (this.pauseOnDivergence && !skipTieChecks) {
+              this.stopAi('stop');
+              return;
+            }
+        }
+        }
+        this.game.move(replayMove);
+        if (this.aiEngine === 'ts' || this.aiEngine === 'wasm') {
+          this.runHistory.updateBestScore(
+            this.aiEngine,
+            this.game.getScoreSnapshot()
+          );
+        }
+        this.clearHint();
+      } finally {
+        this.aiStepInFlight = false;
+      }
+      return;
+    }
     const board = this.game.getBoardSnapshot();
-    const cycleDetected = this.trackBoardHash(this.getBoardHash(board));
+    const cycleDetected = this.parityMode
+      ? false
+      : this.trackBoardHash(this.getBoardHash(board));
     const maxTile = Math.max(...board.flat());
-    if (!this.aiAutoBoostLocked && this.aiEngine === 'ts') {
+    if (!this.aiAutoBoostLocked && this.aiEngine === 'ts' && !this.parityMode) {
       this.applyAutoBoostFromTiles(board, maxTile);
     }
     try {
       let nextMove: Direction | null = null;
       if (this.compareEngines) {
-        const tsDepthLimit = this.getTsDepthLimit(board);
+        const tsDepthLimit = this.getTsCompareDepthLimit();
         const tsScores = this.ai.getTsScores(board, tsDepthLimit);
         const tsFullBest = this.getBestMoveFromScores(tsScores);
         const wasmMove = await this.ai.getMoveForEngine('wasm', board);
@@ -470,11 +819,65 @@ export class GamePageComponent implements OnInit, OnDestroy {
           if (this.aiDebugEnabled) {
             console.log('Saved divergence snapshot to localStorage (aiDivergences).');
           }
+          const moveIndex = this.game.getMoveCountSnapshot();
+          if (isTie && this.aiComparePauseOnTie && primary) {
+                const tsBest = [...this.getCompareBestMoveSet(tsScores)];
+                const status = this.compareEngines
+                  ? `Tie at move ${moveIndex}: ` +
+                  `TS best=${tsBest.join(', ')} | WASM best=${[
+                    ...this.getCompareBestMoveSet(wasmScores),
+                  ].join(', ')} | selected=${primary}`
+                  : `Tie at move ${moveIndex}: ` +
+                  `engine=${this.aiEngine} ` +
+                  `best=${tsBest.join(', ')} | selected=${primary}`;
+            const tieHash = board.flat().join(',');
+            if (
+              this.skipTiePauseOnce &&
+              this.lastTiePauseMove === moveIndex &&
+              this.lastTiePauseHash === tieHash
+            ) {
+              this.skipTiePauseOnce = false;
+            } else if (
+              this.lastTiePauseMove !== moveIndex ||
+              this.lastTiePauseHash !== tieHash
+            ) {
+              this.tiePauseStatus = status;
+              console.log(status);
+              this.lastTiePauseMove = moveIndex;
+              this.lastTiePauseHash = tieHash;
+              this.tiePaused = true;
+              this.stopAi('stop');
+              return;
+            }
+          }
           if (this.pauseOnDivergence && !isTie) {
             this.stopAi('stop');
           }
         }
       } else {
+        if (this.aiEngine === 'wasm' && this.aiComparePauseOnTie) {
+          const wasmScores = await this.ai.getWasmScores(board);
+          const wasmBest = this.getCompareBestMoveSet(wasmScores);
+          const moveIndex = this.game.getMoveCountSnapshot();
+          const tieHash = board.flat().join(',');
+          if (
+            wasmBest.size > 1 &&
+            (this.lastTiePauseMove !== moveIndex ||
+              this.lastTiePauseHash !== tieHash)
+          ) {
+            const status =
+              `Tie at move ${moveIndex}: ` +
+              `engine=wasm best=${[...wasmBest].join(', ')} | selected=pending`;
+            this.tiePauseStatus = status;
+            console.log(status);
+            this.lastTiePauseMove = moveIndex;
+            this.lastTiePauseHash = tieHash;
+            this.tiePaused = true;
+            this.resumeFromTiePause = true;
+            this.stopAi('stop');
+            return;
+          }
+        }
         nextMove = await this.ai.getMove(board);
       }
       if (this.aiEngine === 'ts' && nextMove && cycleDetected) {
@@ -491,7 +894,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
           if (fallback) nextMove = fallback;
         }
       }
-      if (this.aiEngine === 'ts' && nextMove) {
+      if (this.aiEngine === 'ts' && nextMove && !this.parityMode) {
         const boostedMove = this.tryBoostedMove(board, nextMove);
         if (boostedMove) {
           nextMove = boostedMove;
@@ -564,6 +967,15 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.hintLoading = false;
   }
 
+  resumeAfterTiePause(): void {
+    this.tiePauseStatus = '';
+    this.tiePaused = false;
+    if (!this.aiRunning && !this.gameOverActive) {
+      this.toggleAiRun();
+    }
+  }
+
+
   private stopAi(reason: 'stop' | 'game-over' = 'stop'): void {
     if (reason === 'game-over') {
       if (this.aiGameOverHandled) return;
@@ -595,6 +1007,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
 
     if (reason === 'game-over') {
+      const wasReplay = this.spawnMode === 'replay';
+      this.spawnMode = 'normal';
+      this.updateSpawnMode();
+      if (wasReplay) {
+        this.replayParityStatus = 'Replay completed.';
+        this.replayRunMovesStatus = `Replay moves: ${this.game.getMoveCountSnapshot()}`;
+      }
+    }
+
+    if (reason === 'game-over') {
       // no batch advance in baseline mode
     }
   }
@@ -606,8 +1028,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     wasmScores: { direction: Direction; score: number }[]
   ): boolean {
     if (!tsMove || !wasmMove) return false;
-    const tsBest = this.getBestMoveSet(tsScores);
-    const wasmBest = this.getBestMoveSet(wasmScores);
+    const tsBest = this.getCompareBestMoveSet(tsScores);
+    const wasmBest = this.getCompareBestMoveSet(wasmScores);
     return tsBest.has(wasmMove) || wasmBest.has(tsMove);
   }
 
@@ -616,32 +1038,47 @@ export class GamePageComponent implements OnInit, OnDestroy {
   ): Direction | null {
     if (!scores.length) return null;
     let bestScore = -Infinity;
-    let bestMove: Direction | null = null;
-    for (const entry of scores) {
-      if (entry.score > bestScore) {
-        bestScore = entry.score;
-        bestMove = entry.direction;
-      }
-    }
-    return bestMove;
-  }
-
-  private getBestMoveSet(
-    scores: { direction: Direction; score: number }[]
-  ): Set<Direction> {
-    const bestMoves = new Set<Direction>();
-    if (!scores.length) return bestMoves;
-    let bestScore = -Infinity;
     for (const entry of scores) {
       if (entry.score > bestScore) bestScore = entry.score;
     }
     const epsilon = Math.max(1, Math.abs(bestScore) * 1e-6);
+    const tieOrder: Direction[] = ['up', 'down', 'left', 'right'];
+    for (const direction of tieOrder) {
+      const entry = scores.find((item) => item.direction === direction);
+      if (entry && bestScore - entry.score <= epsilon) {
+        return direction;
+      }
+    }
+    return scores[0].direction;
+  }
+
+  private getBestMoveSet(
+    scores: { direction: Direction; score: number }[],
+    quantizeStep?: number
+  ): Set<Direction> {
+    const bestMoves = new Set<Direction>();
+    if (!scores.length) return bestMoves;
+    const quantize = (value: number) =>
+      quantizeStep ? Math.round(value / quantizeStep) * quantizeStep : value;
+    let bestScore = -Infinity;
     for (const entry of scores) {
-      if (bestScore - entry.score <= epsilon) {
+      const value = quantize(entry.score);
+      if (value > bestScore) bestScore = value;
+    }
+    const epsilon = Math.max(1, Math.abs(bestScore) * 1e-6);
+    for (const entry of scores) {
+      const value = quantize(entry.score);
+      if (bestScore - value <= epsilon) {
         bestMoves.add(entry.direction);
       }
     }
     return bestMoves;
+  }
+
+  private getCompareBestMoveSet(
+    scores: { direction: Direction; score: number }[]
+  ): Set<Direction> {
+    return this.getBestMoveSet(scores, 1);
   }
 
   private tryBoostedMove(board: Board, initialMove: Direction): Direction | null {
@@ -734,6 +1171,17 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return Math.min(Math.max(2, depthCap), Math.max(2, distinct.size - 2));
   }
 
+  private getTsCompareDepthLimit(): number {
+    const board = this.game.getBoardSnapshot();
+    const distinct = new Set<number>();
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell > 0) distinct.add(cell);
+      }
+    }
+    return Math.max(2, this.aiMindepth, distinct.size - 2);
+  }
+
   updateAiSpeed(): void {
     if (this.aiSpeedMs < 50) {
       this.aiSpeedMs = 5;
@@ -778,8 +1226,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
       ` totalMoves=${totalMoves}` +
       durationLine;
     this.aiSummary = message;
-    console.log(message);
-    this.debug.log(message);
+    // Summary is displayed in the UI; no console log needed.
+    if (movesSinceStart > totalMoves) {
+      this.runIntegrityStatus =
+        `Run integrity issue: AI moves (${movesSinceStart}) > total moves (${totalMoves}).`;
+      this.showRunIntegrityModal = true;
+      this.runIntegrityIssueDetected = true;
+      this.aiSummary = '';
+      this.aiRunLogged = true;
+      return;
+    }
 
     if (reason === 'game-over' && !this.aiRunLogged) {
       this.aiRunLogged = true;
@@ -790,6 +1246,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
         maxTile,
         topTiles,
         engine: this.aiEngine,
+        gameMode: this.spawnMode,
+        parity: this.parityMode,
+        compare: this.compareEngines,
         depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
         score,
         moves: movesSinceStart,
@@ -804,6 +1263,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiStepInFlight = false;
     this.aiRunToken++;
     this.clearHint();
+    this.tiePauseStatus = '';
+    this.tiePaused = false;
+    this.skipTiePauseOnce = this.lastTiePauseMove !== null;
     this.aiRunLogged = false;
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
@@ -842,12 +1304,43 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiAutoBoostManualOverride = false;
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
+    this.runIntegrityStatus = '';
+    this.showRunIntegrityModal = false;
+    this.runIntegrityIssueDetected = false;
     this.clearHint();
     this.batchRemaining = this.batchTotal;
     this.autoBoostStage = 0;
     this.aiFatalBoostCount = 0;
     this.recentBoardHashes = [];
     this.boardHashCounts.clear();
+    this.runIntegrityStatus = '';
+    this.showRunIntegrityModal = false;
+    this.runIntegrityIssueDetected = false;
+  }
+
+  dismissRunIntegrityModal(): void {
+    this.showRunIntegrityModal = false;
+  }
+
+  private resetAiRunTrackingForNewGame(keepBatch = false): void {
+    this.aiSummary = '';
+    this.aiRunLastStartedAt = null;
+    this.aiRunAccumulatedMs = 0;
+    this.aiRunStartMoves = 0;
+    this.aiRunAccumulatedMoves = 0;
+    this.aiStepInFlight = false;
+    this.aiRunToken++;
+    this.aiRunLogged = false;
+    this.aiGameOverHandled = false;
+    this.aiPausedForNav = false;
+    this.clearHint();
+    this.autoBoostStage = 0;
+    this.aiFatalBoostCount = 0;
+    this.recentBoardHashes = [];
+    this.boardHashCounts.clear();
+    if (!keepBatch) {
+      this.batchRemaining = this.batchTotal;
+    }
   }
 
   private applyDefaultAiConfig(): void {

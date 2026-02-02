@@ -8,6 +8,9 @@ export type RunSummary = {
   maxTile: number;
   topTiles?: number[];
   engine?: 'wasm' | 'ts';
+  gameMode?: 'normal' | 'record' | 'replay';
+  parity?: boolean;
+  compare?: boolean;
   depth?: number;
   score: number;
   moves: number;
@@ -52,6 +55,10 @@ export class RunHistoryService {
     }
   }
 
+  refreshRuns(): void {
+    this.runsSubject.next(this.getRuns());
+  }
+
   addRun(run: RunSummary): void {
     const runs = this.getRuns();
     runs.unshift(run);
@@ -68,6 +75,14 @@ export class RunHistoryService {
   clearRuns(): void {
     localStorage.removeItem(STORAGE_KEY);
     this.runsSubject.next([]);
+  }
+
+  clearInvalidRuns(): void {
+    const runs = this.getRuns();
+    const filtered = runs.filter((run) => run.moves <= run.totalMoves);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    this.runsSubject.next(filtered);
+    this.recomputeBestScores();
   }
 
   pruneRunsMissingEngine(): void {

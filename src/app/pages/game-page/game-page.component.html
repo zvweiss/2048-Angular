@@ -4,7 +4,13 @@
   <div class="page-container" appSwipe (swipe)="move($event)">
     <div class="controls">
       <div class="control-item">
-        <button (click)="restart()" title="Restart game">🔄</button>
+        <button
+          (click)="restart()"
+          [disabled]="spawnMode === 'replay' && !gameOverActive && !canSaveSpawns"
+          title="Restart game"
+        >
+          🔄
+        </button>
         <span class="control-label">Restart</span>
       </div>
       <div class="control-item">
@@ -68,11 +74,19 @@
         </div>
         <div *ngIf="showDebugControls">
           <label class="ai-speed">
-            Spawn Mode ({{ spawnMode }})
-            <select [(ngModel)]="spawnMode" (change)="updateSpawnMode()">
+            Game Mode ({{ spawnMode }})
+            <select
+              [(ngModel)]="spawnMode"
+              (change)="updateSpawnMode()"
+              [disabled]="spawnModeLocked"
+            >
               <option value="normal">Normal</option>
-              <option value="record">Record</option>
-              <option value="replay">Replay</option>
+              <option value="record" *ngIf="aiEngine === 'wasm'">
+                Record
+              </option>
+              <option value="replay" *ngIf="savedSpawnsAvailable">
+                Replay
+              </option>
             </select>
           </label>
           <label class="ai-speed">
@@ -81,6 +95,7 @@
               type="checkbox"
               [(ngModel)]="aiCompareEnabled"
               (change)="updateAiCompare()"
+              [disabled]="aiEngine === 'wasm'"
             />
           </label>
           <label class="ai-speed">
@@ -89,20 +104,54 @@
               type="checkbox"
               [(ngModel)]="aiComparePause"
               (change)="updateAiCompare()"
+              [disabled]="!aiCompareEnabled || aiEngine === 'wasm'"
             />
           </label>
           <label class="ai-speed">
-            Debug AI scores
+            Pause on tie
+            <input
+              type="checkbox"
+              [(ngModel)]="aiComparePauseOnTie"
+              (change)="updateAiCompare()"
+            />
+          </label>
+          <label class="ai-speed">
+            Log AI scores
             <input
               type="checkbox"
               [(ngModel)]="aiDebugEnabled"
               (change)="updateAiDebug()"
             />
           </label>
+          <label class="ai-speed">
+            Parity Mode
+            <input
+              type="checkbox"
+              [(ngModel)]="parityMode"
+              (change)="updateParityMode()"
+              [disabled]="aiCompareEnabled || aiEngine === 'wasm'"
+            />
+          </label>
           <div class="ai-spawn-actions">
-            <button type="button" (click)="saveSpawnLog()">Save Spawns</button>
-            <button type="button" (click)="loadSpawnLog()">Load Spawns</button>
-            <button type="button" (click)="clearSpawnLog()">Clear Spawns</button>
+            <button
+              type="button"
+              (click)="saveSpawnLog()"
+              [disabled]="!canSaveSpawns"
+            >
+              Save Spawns
+            </button>
+            <button
+              type="button"
+              (click)="clearSpawnLog()"
+              [disabled]="!canClearSpawns"
+            >
+              Clear Spawns
+            </button>
+          </div>
+          <div class="ai-boost-status">
+            {{ savedSpawnsAvailable
+              ? 'Saved spawns exist'
+              : 'Saved spawns do not exist' }}
           </div>
           <div class="ai-spawn-actions">
             <button type="button" (click)="dumpDivergences()">Dump Divergences</button>
@@ -129,6 +178,7 @@
               step="1"
               [(ngModel)]="aiDepthCap"
               (input)="updateDepthCap()"
+              [disabled]="parityMode"
             />
           </label>
           <div class="ai-auto-boost-toggle" *ngIf="autoBoostPaused">
@@ -143,10 +193,20 @@
               step="50"
               [(ngModel)]="aiTimeBudgetMs"
               (input)="updateTsConfig()"
+              [disabled]="parityMode"
             />
           </label>
           <div class="ai-boost-status">
             Fatal saves: {{ aiFatalBoostCount }}
+          </div>
+          <div class="ai-boost-status" *ngIf="replayParityStatus">
+            {{ replayParityStatus }}
+          </div>
+          <div class="ai-boost-status" *ngIf="replaySavedMovesStatus">
+            {{ replaySavedMovesStatus }}
+          </div>
+          <div class="ai-boost-status" *ngIf="replayRunMovesStatus">
+            {{ replayRunMovesStatus }}
           </div>
           <div class="ai-boost-status" *ngIf="aiBoostStatus">
             {{ aiBoostStatus }}
@@ -170,6 +230,13 @@
       <app-game-board></app-game-board>
       <div class="hint-overlay" *ngIf="hintDirection as dir">
         <div class="hint-arrow">{{ hintArrow(dir) }}</div>
+      </div>
+    </div>
+    <div class="overlay" *ngIf="showRunIntegrityModal">
+      <div class="modal">
+        <h3>Run Integrity Issue</h3>
+        <p>{{ runIntegrityStatus }}</p>
+        <button type="button" (click)="dismissRunIntegrityModal()">Dismiss</button>
       </div>
     </div>
     <div class="hint-caption" [class.is-visible]="hintDirection">

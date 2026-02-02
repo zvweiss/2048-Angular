@@ -180,6 +180,23 @@
   accent-color: #5e5248;
 }
 
+.ai-controls .ai-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-controls .ai-continue {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #bfae9f;
+  background: #f6f1ea;
+  color: #1f150f;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .ai-buttons {
   display: flex;
   gap: 0.5rem;

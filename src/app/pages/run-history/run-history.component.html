@@ -10,6 +10,9 @@
       WASM 32768: {{ wasmReachedCount }}/{{ wasmCount }}
       ({{ wasmReachedPercent }}%)
     </span>
+    <span class="engine-metrics" *ngIf="invalidRunsCount > 0">
+      Integrity issues: {{ invalidRunsCount }}
+    </span>
     <button
       class="clear-btn"
       (click)="exportRunsCsv('ts')"
@@ -34,6 +37,13 @@
     <button class="clear-btn" (click)="clearHistory()" *ngIf="totalCount > 0">
       Clear History
     </button>
+    <button
+      class="clear-btn"
+      (click)="clearInvalidRuns()"
+      *ngIf="invalidRunsCount > 0"
+    >
+      Clear Invalid Runs
+    </button>
   </div>
 
   <div class="table-wrap" *ngIf="runs.length > 0; else emptyState">
@@ -43,6 +53,12 @@
           <th (click)="sortBy('timestamp')">Date/Time</th>
           <th class="num-col" (click)="sortBy('score')">Score</th>
           <th class="num-col" (click)="sortBy('maxTile')">Max Tile</th>
+          <th>Engine</th>
+          <th>Game Mode</th>
+          <th>Parity</th>
+          <th>Compare</th>
+          <th class="num-col">AI Moves</th>
+          <th class="num-col">Total Moves</th>
           <th class="num-col" (click)="sortBy('depth')">Depth</th>
           <th>Top Tiles</th>
         </tr>
@@ -52,16 +68,28 @@
           <td>{{ formatTimestamp(run.timestamp) }}</td>
           <td class="num-col">{{ run.score }}</td>
           <td class="num-col">{{ run.maxTile }}</td>
+          <td>{{ run.engine ?? '' }}</td>
+          <td>{{ formatGameMode(run.gameMode) }}</td>
+          <td>{{ run.parity ? 'yes' : 'no' }}</td>
+          <td>{{ run.compare ? 'yes' : 'no' }}</td>
+          <td class="num-col">{{ run.moves }}</td>
+          <td class="num-col">{{ run.totalMoves }}</td>
           <td class="num-col">{{ run.depth ?? '' }}</td>
           <td>{{ (run.topTiles ?? []).join(', ') }}</td>
         </tr>
         <tr class="engine-divider" *ngIf="tsRuns.length && wasmRuns.length">
-          <td colspan="5"></td>
+          <td colspan="11"></td>
         </tr>
         <tr *ngFor="let run of wasmRuns">
           <td>{{ formatTimestamp(run.timestamp) }}</td>
           <td class="num-col">{{ run.score }}</td>
           <td class="num-col">{{ run.maxTile }}</td>
+          <td>{{ run.engine ?? '' }}</td>
+          <td>{{ formatGameMode(run.gameMode) }}</td>
+          <td>{{ run.parity ? 'yes' : 'no' }}</td>
+          <td>{{ run.compare ? 'yes' : 'no' }}</td>
+          <td class="num-col">{{ run.moves }}</td>
+          <td class="num-col">{{ run.totalMoves }}</td>
           <td class="num-col">{{ run.depth ?? '' }}</td>
           <td>{{ (run.topTiles ?? []).join(', ') }}</td>
         </tr>

@@ -28,6 +28,13 @@ const gradients: number[][] = [
 const gradientsFlipped = gradients.map((row) => [...row].reverse());
 
 let tablesInitialized = false;
+const SCORE_LOST_PENALTY = 200000.0;
+const SCORE_MONOTONICITY_POWER = 4.0;
+const SCORE_MONOTONICITY_WEIGHT = 47.0;
+const SCORE_SUM_POWER = 3.5;
+const SCORE_SUM_WEIGHT = 11.0;
+const SCORE_MERGES_WEIGHT = 700.0;
+const SCORE_EMPTY_WEIGHT = 270.0;
 
 export function computeBestMoveBitboard(board: Board): Direction | null {
   ensureTables();
@@ -673,13 +680,6 @@ function placeTile(rows: number[], index: number, exp: number): number[] {
 
 function ensureTables(): void {
   if (tablesInitialized) return;
-  const SCORE_LOST_PENALTY = 200000.0;
-  const SCORE_MONOTONICITY_POWER = 4.0;
-  const SCORE_MONOTONICITY_WEIGHT = 47.0;
-  const SCORE_SUM_POWER = 3.5;
-  const SCORE_SUM_WEIGHT = 11.0;
-  const SCORE_MERGES_WEIGHT = 700.0;
-  const SCORE_EMPTY_WEIGHT = 270.0;
   for (let mask = 0; mask < 1 << 16; mask++) {
     emptyCountByMask[mask] = countBits(mask);
   }
@@ -903,6 +903,87 @@ export function rowsToGrid(rows: number[]): Board {
     grid.push(row);
   }
   return grid;
+}
+
+function computeRowHeurComponents(row: number): {
+  empty: number;
+  merges: number;
+  sum: number;
+  monotonicity: number;
+} {
+  const exp0 = row & 0xf;
+  const exp1 = (row >> 4) & 0xf;
+  const exp2 = (row >> 8) & 0xf;
+  const exp3 = (row >> 12) & 0xf;
+  const line = [exp0, exp1, exp2, exp3];
+  let empty = 0;
+  let merges = 0;
+  let prev = 0;
+  let counter = 0;
+  let sum = f32(0);
+  for (let i = 0; i < 4; i++) {
+    const rank = line[i];
+    sum = f32(sum + f32(Math.pow(rank, SCORE_SUM_POWER)));
+    if (rank === 0) {
+      empty += 1;
+    } else {
+      if (prev === rank) {
+        counter++;
+      } else if (counter > 0) {
+        merges += 1 + counter;
+        counter = 0;
+      }
+      prev = rank;
+    }
+  }
+  if (counter > 0) {
+    merges += 1 + counter;
+  }
+  const monotonicity = computeRowMonotonicity(
+    exp0,
+    exp1,
+    exp2,
+    exp3,
+    SCORE_MONOTONICITY_POWER
+  );
+  return { empty, merges, sum, monotonicity };
+}
+
+export function computeHeuristicBreakdown(board: Board): {
+  empty: number;
+  merges: number;
+  sum: number;
+  monotonicity: number;
+  lostPenalty: number;
+  total: number;
+} {
+  ensureTables();
+  const rows = boardToRows(board);
+  const cols = rowsToCols(rows);
+  let empty = 0;
+  let merges = 0;
+  let sum = 0;
+  let monotonicity = 0;
+  for (let i = 0; i < 4; i++) {
+    const rowParts = computeRowHeurComponents(rows[i]);
+    empty += rowParts.empty;
+    merges += rowParts.merges;
+    sum += rowParts.sum;
+    monotonicity += rowParts.monotonicity;
+    const colParts = computeRowHeurComponents(cols[i]);
+    empty += colParts.empty;
+    merges += colParts.merges;
+    sum += colParts.sum;
+    monotonicity += colParts.monotonicity;
+  }
+  const lostPenalty = SCORE_LOST_PENALTY * 8;
+  const total =
+    lostPenalty +
+    SCORE_EMPTY_WEIGHT * empty +
+    SCORE_MERGES_WEIGHT * merges -
+    SCORE_MONOTONICITY_WEIGHT * monotonicity -
+    SCORE_SUM_WEIGHT * sum;
+  return { empty, merges, sum, monotonicity, lostPenalty, total };
 }
 
 

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { Observable } from 'rxjs';
 import { GameService } from '../../services/game.service';
@@ -16,7 +16,7 @@ import {
   templateUrl: './navbar.component.html',
   styleUrls: ['./navbar.component.css'],
 })
-export class NavbarComponent {
+export class NavbarComponent implements OnInit {
   score$!: Observable<number>;
   bestScores$!: Observable<BestScoresByEngine>;
   runs$!: Observable<RunSummary[]>;
@@ -25,6 +25,10 @@ export class NavbarComponent {
     this.score$ = game.score$;
     this.bestScores$ = history.bestScores$;
     this.runs$ = history.runs$;
+  }
+
+  ngOnInit(): void {
+    this.history.refreshRuns();
   }
 
   getEngineReachedPercent(

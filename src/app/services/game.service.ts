@@ -10,6 +10,9 @@ export class GameService {
   private spawnMode: 'normal' | 'record' | 'replay' = 'normal';
   private spawnLog: { r: number; c: number; value: number }[] = [];
   private spawnIndex = 0;
+  private moveLog: Direction[] = [];
+  private moveIndex = 0;
+  private replayExhausted = false;
 
   private boardSubject = new BehaviorSubject<Board>(this.createEmptyBoard());
   board$ = this.boardSubject.asObservable();
@@ -80,6 +83,8 @@ export class GameService {
     this.debug.log('Starting new game...');
     const board = this.createEmptyBoard();
     this.spawnIndex = 0;
+    this.moveIndex = 0;
+    this.replayExhausted = false;
     this.spawnTile(board);
     this.spawnTile(board);
     this.boardSubject.next(board);
@@ -100,28 +105,66 @@ export class GameService {
 
   setSpawnMode(mode: 'normal' | 'record' | 'replay'): void {
     this.spawnMode = mode;
+    if (mode !== 'replay') {
+      this.replayExhausted = false;
+    }
   }
 
   getSpawnMode(): 'normal' | 'record' | 'replay' {
     return this.spawnMode;
   }
 
+  getSpawnLogLength(): number {
+    return this.spawnLog.length;
+  }
+
+  getMoveLogLength(): number {
+    return this.moveLog.length;
+  }
+
+  getReplayMove(): Direction | null {
+    if (this.spawnMode !== 'replay') return null;
+    const next = this.moveLog[this.moveIndex];
+    if (!next) {
+      this.replayExhausted = true;
+      this.gameOverSubject.next(true);
+      return null;
+    }
+    this.moveIndex += 1;
+    return next;
+  }
+
   saveSpawnLog(): void {
     localStorage.setItem('spawnLog', JSON.stringify(this.spawnLog));
+    localStorage.setItem('moveLog', JSON.stringify(this.moveLog));
   }
 
   loadSpawnLog(): void {
     const raw = localStorage.getItem('spawnLog');
     this.spawnLog = raw ? JSON.parse(raw) : [];
+    const movesRaw = localStorage.getItem('moveLog');
+    this.moveLog = movesRaw ? JSON.parse(movesRaw) : [];
+    this.spawnIndex = 0;
+    this.moveIndex = 0;
   }
 
   clearSpawnLog(): void {
     this.spawnLog = [];
     this.spawnIndex = 0;
+    this.moveLog = [];
+    this.moveIndex = 0;
+    this.replayExhausted = false;
     localStorage.removeItem('spawnLog');
+    localStorage.removeItem('moveLog');
   }
 
   move(direction: Direction): void {
+    if (this.spawnMode === 'replay' && this.replayExhausted) {
+      return;
+    }
+    if (this.spawnMode === 'record') {
+      this.moveLog.push(direction);
+    }
     const originalBoard = this.boardSubject.value;
     if (this.debugVisible) {
       this.debug.log('Original board:\n' + this.formatBoard(originalBoard));
@@ -303,13 +346,18 @@ export class GameService {
     if (empty.length === 0) return;
 
     if (this.spawnMode === 'replay') {
-      const next = this.spawnLog[this.spawnIndex++];
+      const next = this.spawnLog[this.spawnIndex];
       if (!next) {
         this.debug.log('Replay spawn log exhausted.');
+        this.replayExhausted = true;
+        this.gameOverSubject.next(true);
         return;
       }
+      this.spawnIndex += 1;
       if (board[next.r][next.c] !== 0) {
         this.debug.log('Replay spawn mismatch: cell not empty.');
+        this.replayExhausted = true;
+        this.gameOverSubject.next(true);
         return;
       }
       board[next.r][next.c] = next.value;

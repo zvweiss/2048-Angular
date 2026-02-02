@@ -33,6 +33,7 @@ export class RunHistoryComponent implements OnInit {
   constructor(private history: RunHistoryService) {}
 
   ngOnInit(): void {
+    this.history.refreshRuns();
     this.runs = this.history.getRuns();
     this.configEntries = this.history.getConfigHistory();
     this.applySort();
@@ -59,6 +60,12 @@ export class RunHistoryComponent implements OnInit {
     this.runs = [];
   }
 
+  clearInvalidRuns(): void {
+    this.history.clearInvalidRuns();
+    this.runs = this.history.getRuns();
+    this.applySort();
+  }
+
   exportRunsCsv(engine: 'ts' | 'wasm'): void {
     const rows = this.history
       .getRuns()
@@ -70,6 +77,9 @@ export class RunHistoryComponent implements OnInit {
       maxTile: run.maxTile,
       topTiles: (run.topTiles ?? []).join('|'),
       engine: run.engine ?? '',
+      gameMode: run.gameMode ?? '',
+      parity: run.parity ? 'yes' : 'no',
+      compare: run.compare ? 'yes' : 'no',
       depth: run.depth ?? '',
       aiMoves: run.moves,
       totalMoves: run.totalMoves,
@@ -124,6 +134,10 @@ export class RunHistoryComponent implements OnInit {
     return this.runs.length;
   }
 
+  get invalidRunsCount(): number {
+    return this.runs.filter((run) => run.moves > run.totalMoves).length;
+  }
+
   get tsReachedPercent(): number {
     if (this.tsRuns.length === 0) return 0;
     return Math.round((this.tsReachedCount / this.tsRuns.length) * 1000) / 10;
@@ -165,6 +179,10 @@ export class RunHistoryComponent implements OnInit {
     const mins = Math.floor(seconds / 60);
     const rem = seconds % 60;
     return `${mins}m ${rem}s`;
+  }
+
+  formatGameMode(mode?: RunSummary['gameMode']): string {
+    return mode ?? 'normal';
   }
 
   private applySort(): void {
