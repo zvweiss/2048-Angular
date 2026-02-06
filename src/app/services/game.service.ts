@@ -9,10 +9,14 @@ export class GameService {
   private readonly size = 4;
   private spawnMode: 'normal' | 'record' | 'replay' = 'normal';
   private spawnLog: { r: number; c: number; value: number }[] = [];
+  private shadowRecording = false;
   private spawnIndex = 0;
   private moveLog: Direction[] = [];
   private moveIndex = 0;
   private replayExhausted = false;
+  private spawnLabel = '';
+  private savedSpawns: SavedSpawn[] = [];
+  private currentSavedSpawnId: string | null = null;
 
   private boardSubject = new BehaviorSubject<Board>(this.createEmptyBoard());
   board$ = this.boardSubject.asObservable();
@@ -73,6 +77,7 @@ export class GameService {
     this.debug.log('GameService initialized');
     this.bestScore = this.getBestScore();
     this.debug.log('BestScore: ' + this.bestScore);
+    this.loadSavedSpawnsFromStorage();
   }
 
   private createEmptyBoard(): Board {
@@ -114,12 +119,58 @@ export class GameService {
     return this.spawnMode;
   }
 
+  setShadowRecording(enabled: boolean): void {
+    if (this.shadowRecording === enabled) return;
+    this.shadowRecording = enabled;
+    if (enabled) {
+      this.clearRecording();
+    }
+  }
+
+  isShadowRecording(): boolean {
+    return this.shadowRecording;
+  }
+
   getSpawnLogLength(): number {
     return this.spawnLog.length;
   }
 
   getMoveLogLength(): number {
     return this.moveLog.length;
+  }
+
+  getSavedSpawnsMeta(): SavedSpawnMeta[] {
+    this.loadSavedSpawnsFromStorage();
+    return this.savedSpawns.map(({ id, label, createdAt }) => ({
+      id,
+      label,
+      createdAt,
+    }));
+  }
+
+  getSavedSpawnMoveCountByLabel(label: string): number | null {
+    const cleaned = label.trim();
+    if (!cleaned) return null;
+    this.loadSavedSpawnsFromStorage();
+    const match = this.savedSpawns.find((entry) => entry.label === cleaned);
+    if (!match) return null;
+    return match.moveLog?.length ?? null;
+  }
+
+
+  hasSavedSpawns(): boolean {
+    return this.getSavedSpawnsMeta().length > 0;
+  }
+
+  getCurrentSavedSpawnId(): string | null {
+    return this.currentSavedSpawnId;
+  }
+
+  getSpawnLabel(): string {
+    if (!this.spawnLabel) {
+      this.spawnLabel = localStorage.getItem('spawnLabel') ?? '';
+    }
+    return this.spawnLabel;
   }
 
   getReplayMove(): Direction | null {
@@ -134,18 +185,44 @@ export class GameService {
     return next;
   }
 
-  saveSpawnLog(): void {
-    localStorage.setItem('spawnLog', JSON.stringify(this.spawnLog));
-    localStorage.setItem('moveLog', JSON.stringify(this.moveLog));
+  saveSpawnLog(label = ''): void {
+    this.loadSavedSpawnsFromStorage();
+    const cleanedLabel = label.trim();
+    const entry: SavedSpawn = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      label: cleanedLabel,
+      createdAt: Date.now(),
+      spawnLog: this.spawnLog.map((entry) => ({ ...entry })),
+      moveLog: [...this.moveLog],
+    };
+    this.savedSpawns.unshift(entry);
+    this.currentSavedSpawnId = entry.id;
+    this.spawnLabel = cleanedLabel;
+    this.persistSavedSpawns();
   }
 
   loadSpawnLog(): void {
-    const raw = localStorage.getItem('spawnLog');
-    this.spawnLog = raw ? JSON.parse(raw) : [];
-    const movesRaw = localStorage.getItem('moveLog');
-    this.moveLog = movesRaw ? JSON.parse(movesRaw) : [];
+    this.loadSavedSpawnsFromStorage();
+    const nextId =
+      this.currentSavedSpawnId ?? this.savedSpawns[0]?.id ?? null;
+    if (!nextId) {
+      this.spawnLog = [];
+      this.moveLog = [];
+      this.spawnLabel = '';
+      this.spawnIndex = 0;
+      this.moveIndex = 0;
+      return;
+    }
+    this.loadSavedSpawn(nextId);
+  }
+
+  clearRecording(): void {
+    this.spawnLog = [];
     this.spawnIndex = 0;
+    this.moveLog = [];
     this.moveIndex = 0;
+    this.replayExhausted = false;
+    this.spawnLabel = '';
   }
 
   clearSpawnLog(): void {
@@ -154,15 +231,131 @@ export class GameService {
     this.moveLog = [];
     this.moveIndex = 0;
     this.replayExhausted = false;
+    this.spawnLabel = '';
+    this.savedSpawns = [];
+    this.currentSavedSpawnId = null;
+    localStorage.removeItem('savedSpawns');
     localStorage.removeItem('spawnLog');
     localStorage.removeItem('moveLog');
+    localStorage.removeItem('spawnLabel');
+  }
+
+  renameSavedSpawnLabel(oldLabel: string, newLabel: string): void {
+    this.loadSavedSpawnsFromStorage();
+    const from = oldLabel.trim();
+    const to = newLabel.trim();
+    if (!from || !to || from === to) return;
+    let changed = false;
+    this.savedSpawns = this.savedSpawns.map((entry) => {
+      if (entry.label.trim() === from) {
+        changed = true;
+        return { ...entry, label: to };
+      }
+      return entry;
+    });
+    if (this.spawnLabel.trim() === from) {
+      this.spawnLabel = to;
+      changed = true;
+    }
+    if (changed) {
+      this.persistSavedSpawns();
+    }
+  }
+
+  deleteSavedSpawnsByLabel(label: string): number {
+    this.loadSavedSpawnsFromStorage();
+    const target = label.trim();
+    if (!target) return 0;
+    const before = this.savedSpawns.length;
+    this.savedSpawns = this.savedSpawns.filter(
+      (entry) => entry.label.trim() !== target
+    );
+    if (this.spawnLabel.trim() === target) {
+      this.spawnLabel = '';
+    }
+    const removed = before - this.savedSpawns.length;
+    if (removed > 0) {
+      this.persistSavedSpawns();
+    }
+    return removed;
+  }
+
+  loadSavedSpawn(id: string): boolean {
+    this.loadSavedSpawnsFromStorage();
+    const entry = this.savedSpawns.find((item) => item.id === id);
+    if (!entry) return false;
+    this.spawnLog = entry.spawnLog.map((item) => ({ ...item }));
+    this.moveLog = [...entry.moveLog];
+    this.spawnLabel = entry.label;
+    this.spawnIndex = 0;
+    this.moveIndex = 0;
+    this.currentSavedSpawnId = entry.id;
+    return true;
+  }
+
+  private loadSavedSpawnsFromStorage(): void {
+    const raw = localStorage.getItem('savedSpawns');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as SavedSpawn[];
+        if (Array.isArray(parsed)) {
+          const invalidLabels = new Set([
+            'replay label already exists',
+            'good. duplicate replay label could not be created',
+          ]);
+          const filtered = parsed.filter((entry) => {
+            const label = entry.label?.trim().toLowerCase() ?? '';
+            if (!label) return true;
+            return !invalidLabels.has(label);
+          });
+          this.savedSpawns = filtered;
+          if (filtered.length !== parsed.length) {
+            this.persistSavedSpawns();
+          }
+          return;
+        }
+      } catch {
+        // fall through
+      }
+    }
+    const legacySpawns = localStorage.getItem('spawnLog');
+    const legacyMoves = localStorage.getItem('moveLog');
+    if (legacySpawns && legacyMoves) {
+      try {
+        const spawnLog = JSON.parse(legacySpawns);
+        const moveLog = JSON.parse(legacyMoves);
+        if (Array.isArray(spawnLog) && Array.isArray(moveLog)) {
+          const legacyLabel = localStorage.getItem('spawnLabel') ?? '';
+          const entry: SavedSpawn = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            label: legacyLabel,
+            createdAt: Date.now(),
+            spawnLog,
+            moveLog,
+          };
+          this.savedSpawns = [entry];
+          this.currentSavedSpawnId = entry.id;
+          this.spawnLabel = legacyLabel;
+          this.persistSavedSpawns();
+          localStorage.removeItem('spawnLog');
+          localStorage.removeItem('moveLog');
+          localStorage.removeItem('spawnLabel');
+        }
+      } catch {
+        // ignore legacy migration errors
+      }
+    }
+  }
+
+  private persistSavedSpawns(): void {
+    localStorage.setItem('savedSpawns', JSON.stringify(this.savedSpawns));
   }
 
   move(direction: Direction): void {
     if (this.spawnMode === 'replay' && this.replayExhausted) {
       return;
     }
-    if (this.spawnMode === 'record') {
+    if (this.spawnMode === 'record' || this.shadowRecording) {
       this.moveLog.push(direction);
     }
     const originalBoard = this.boardSubject.value;
@@ -297,7 +490,6 @@ export class GameService {
   }
 
   dismissGameOver(): void {
-    this.startNewGame();
     this.gameOverSubject.next(false);
   }
 
@@ -367,7 +559,7 @@ export class GameService {
     const { r, c } = empty[Math.floor(Math.random() * empty.length)];
     const value = Math.random() < 0.9 ? 2 : 4;
     board[r][c] = value;
-    if (this.spawnMode === 'record') {
+    if (this.spawnMode === 'record' || this.shadowRecording) {
       this.spawnLog.push({ r, c, value });
     }
     this.debug.log(`Spawn tile at row ${r}, col ${c}, value ${board[r][c]}`);
@@ -406,3 +598,17 @@ export class GameService {
       .join('\n');
   }
 }
+
+export type SavedSpawn = {
+  id: string;
+  label: string;
+  createdAt: number;
+  spawnLog: { r: number; c: number; value: number }[];
+  moveLog: Direction[];
+};
+
+export type SavedSpawnMeta = {
+  id: string;
+  label: string;
+  createdAt: number;
+};

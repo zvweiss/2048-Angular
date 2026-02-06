@@ -6,7 +6,6 @@
       <div class="control-item">
         <button
           (click)="restart()"
-          [disabled]="spawnMode === 'replay' && !gameOverActive && !canSaveSpawns"
           title="Restart game"
         >
           🔄
@@ -16,7 +15,7 @@
       <div class="control-item">
         <button
           (click)="toggleAiRun()"
-          [disabled]="gameOverActive"
+          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive"
           [title]="aiRunning ? 'Stop AI' : 'Run AI'"
         >
           {{ aiRunning ? '🔴' : '🟢' }}
@@ -25,8 +24,8 @@
       </div>
       <div class="control-item">
         <button
-          (click)="stepAi()"
-          [disabled]="aiRunning || gameOverActive"
+          (click)="stepAi('manual')"
+          [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked"
           [attr.title]="aiRunning || gameOverActive ? null : 'Single Step'"
         >
           🚶
@@ -36,7 +35,7 @@
       <div class="control-item">
         <button
           (click)="showHint()"
-          [disabled]="aiRunning || gameOverActive || hintLoading"
+          [disabled]="aiRunning || gameOverActive || hintLoading || isRecordingLocked || isRecordManualLocked"
           [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
         >
           {{ hintIcon() }}
@@ -47,11 +46,59 @@
 
     <div class="ai-controls">
       <div class="ai-primary">
+        <div class="divergence-alert" *ngIf="divergenceStatus">
+          <div class="divergence-title">{{ divergenceStatus }}</div>
+          <div class="divergence-detail" *ngIf="divergenceDetails">
+            {{ divergenceDetails }}
+          </div>
+          <div class="divergence-entry-actions">
+            <button type="button" (click)="copyDivergenceSnapshot()">
+              Copy Backlog Block
+            </button>
+          </div>
+        </div>
+        <div class="divergence-backlog" *ngIf="divergenceBacklog.length > 0">
+          <div class="divergence-title">Divergence backlog</div>
+          <div class="divergence-entry" *ngFor="let entry of divergenceBacklog">
+            <div class="divergence-entry-text">
+              <span class="divergence-label">{{ entry.label }}</span>
+              <span class="divergence-note">{{ entry.note }}</span>
+            </div>
+            <div class="divergence-entry-actions">
+              <button type="button" (click)="replayBacklogEntry(entry.label)">
+                Replay
+              </button>
+              <button type="button" (click)="markBacklogFixed(entry.label)">
+                Mark Fixed
+              </button>
+              <button type="button" (click)="deleteBacklogEntry(entry.label)">
+                {{ entry.label.includes(' — Refreshed ') ? 'Clear Replays' : 'Delete All' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="divergence-backlog" *ngIf="divergenceFixed.length > 0">
+          <div class="divergence-title">Divergence fixed-log</div>
+          <div class="divergence-entry" *ngFor="let entry of divergenceFixed">
+            <div class="divergence-entry-text">
+              <span class="divergence-label">{{ entry.label }}</span>
+              <span class="divergence-note">{{ entry.note }}</span>
+            </div>
+            <div class="divergence-entry-actions">
+              <button type="button" (click)="replayFixedEntry(entry.label)">
+                Replay
+              </button>
+              <button type="button" (click)="dismissFixedEntry(entry.label)">
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
         <div class="ai-buttons">
           <button
             class="ai-step-primary"
-            (click)="stepAi()"
-            [disabled]="aiRunning || gameOverActive"
+            (click)="stepAi('manual')"
+            [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked"
           >
             Single Step
           </button>
@@ -73,6 +120,11 @@
           </button>
         </div>
         <div *ngIf="showDebugControls">
+          <div class="ai-spawn-actions">
+            <button type="button" (click)="logCurrentRunForTest()">
+              Log Current Run (temp)
+            </button>
+          </div>
           <label class="ai-speed">
             Game Mode ({{ spawnMode }})
             <select
@@ -89,22 +141,50 @@
               </option>
             </select>
           </label>
-          <label class="ai-speed">
+          <label
+            class="ai-speed"
+            *ngIf="spawnMode === 'replay' && savedSpawns.length"
+          >
+            Replay Recording
+            <select
+              [(ngModel)]="selectedReplayId"
+              (ngModelChange)="onReplaySelectionChange($any($event))"
+            >
+              <option *ngFor="let spawn of savedSpawns" [ngValue]="spawn.id">
+                {{ getReplayLabel(spawn) }}
+              </option>
+            </select>
+          </label>
+          <label
+            class="ai-speed"
+            *ngIf="aiEngine !== 'wasm' && spawnMode === 'replay'"
+          >
             Compare TS vs WASM
             <input
               type="checkbox"
               [(ngModel)]="aiCompareEnabled"
               (change)="updateAiCompare()"
-              [disabled]="aiEngine === 'wasm'"
             />
           </label>
-          <label class="ai-speed">
+          <label class="ai-speed" *ngIf="aiEngine !== 'wasm'">
+            Parity Mode
+            <input
+              type="checkbox"
+              [(ngModel)]="parityMode"
+              (change)="updateParityMode()"
+              [disabled]="aiEngine === 'ts' && spawnMode === 'replay'"
+            />
+          </label>
+          <label
+            class="ai-speed"
+            *ngIf="aiEngine !== 'wasm' && spawnMode === 'replay' && aiCompareEnabled"
+          >
             Pause on divergence
             <input
               type="checkbox"
               [(ngModel)]="aiComparePause"
               (change)="updateAiCompare()"
-              [disabled]="!aiCompareEnabled || aiEngine === 'wasm'"
+              [disabled]="!aiCompareEnabled"
             />
           </label>
           <label class="ai-speed">
@@ -121,15 +201,6 @@
               type="checkbox"
               [(ngModel)]="aiDebugEnabled"
               (change)="updateAiDebug()"
-            />
-          </label>
-          <label class="ai-speed">
-            Parity Mode
-            <input
-              type="checkbox"
-              [(ngModel)]="parityMode"
-              (change)="updateParityMode()"
-              [disabled]="aiCompareEnabled || aiEngine === 'wasm'"
             />
           </label>
           <div class="ai-spawn-actions">
@@ -202,6 +273,9 @@
           <div class="ai-boost-status" *ngIf="replayParityStatus">
             {{ replayParityStatus }}
           </div>
+          <div class="ai-boost-status" *ngIf="replayProgressText">
+            {{ replayProgressText }}
+          </div>
           <div class="ai-boost-status" *ngIf="replaySavedMovesStatus">
             {{ replaySavedMovesStatus }}
           </div>
@@ -273,8 +347,67 @@
     <div class="overlay" *ngIf="(gameOver$ | async) && !gameOverDismissed">
       <div class="popup">
         <h2>💀 Game Over</h2>
-        <p>No more valid moves. Try again!</p>
+        <p>{{ gameOverMessage }}</p>
         <button (click)="dismissGameOver()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- REPLAY STOPPED EARLY POPUP -->
+    <div class="overlay" *ngIf="replayStoppedEarly">
+      <div class="popup">
+        <h2>⏸ Replay Stopped Early</h2>
+        <p>{{ replayStoppedEarlyMessage }}</p>
+        <button (click)="dismissReplayStoppedEarly()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- REPLAY DATA MISSING POPUP -->
+    <div class="overlay" *ngIf="replayDataMissingActive">
+      <div class="popup">
+        <h2>⚠️ Replay Data Missing</h2>
+        <p>{{ replayDataMissingMessage }}</p>
+        <button (click)="dismissReplayDataMissing()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- DIVERGENCE LABEL BLOCKED POPUP -->
+    <div class="overlay" *ngIf="divergenceLabelBlockedActive">
+      <div class="popup">
+        <h2>⚠️ Divergence Label Blocked</h2>
+        <p>{{ divergenceLabelBlockedMessage }}</p>
+        <button (click)="dismissDivergenceLabelBlocked()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- STOPPED RUN SAVE CONFIRM -->
+    <div class="overlay" *ngIf="confirmStopSaveActive">
+      <div class="popup">
+        <h2>Save Stopped Run?</h2>
+        <p>
+          This run was stopped manually. Saving will mark it as
+          <strong>From Stopped Run</strong> in the report.
+        </p>
+        <label class="popup-input">
+          Replay label
+          <input
+            type="text"
+            [(ngModel)]="confirmStopSaveLabel"
+            placeholder="Label"
+            (input)="updateConfirmStopSaveLabel()"
+          />
+        </label>
+        <div class="popup-error" *ngIf="confirmStopSaveError">
+          {{ confirmStopSaveError }}
+        </div>
+        <div class="popup-actions">
+          <button
+            (click)="confirmSaveStoppedRun()"
+            [disabled]="!canConfirmStopSave"
+          >
+            Confirm Save & End
+          </button>
+          <button (click)="continueStoppedRun()">Continue Game</button>
+        </div>
       </div>
     </div>
   </div>

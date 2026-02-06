@@ -1,40 +1,68 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { NavbarComponent } from '../../components/navbar/navbar.component';
 import {
   RunHistoryService,
   RunSummary,
   RunConfigEntry,
 } from '../../services/run-history.service';
+import { GameService } from '../../services/game.service';
 
 type SortKey =
   | 'timestamp'
   | 'score'
   | 'maxTile'
   | 'moves'
-  | 'durationMs'
-  | 'depth';
+  | 'engine'
+  | 'gameMode'
+  | 'parity'
+  | 'compare'
+  | 'replayOutcome'
+  | 'runOutcome'
+  | 'topTiles'
+  | 'replayLabel'
+  | 'actions';
 type SortDir = 'asc' | 'desc';
+type SortCriterion = { key: SortKey; dir: SortDir };
 
 @Component({
   selector: 'app-run-history',
   standalone: true,
-  imports: [CommonModule, NavbarComponent],
+  imports: [CommonModule, FormsModule, NavbarComponent],
   templateUrl: './run-history.component.html',
   styleUrls: ['./run-history.component.css'],
 })
 export class RunHistoryComponent implements OnInit {
   runs: RunSummary[] = [];
   configEntries: RunConfigEntry[] = [];
-  sortKey: SortKey = 'score';
+  sortKey: SortKey = 'timestamp';
   sortDir: SortDir = 'desc';
+  sortCriteria: SortCriterion[] = [{ key: 'timestamp', dir: 'desc' }];
+  sortDialogOpen = false;
+  sortAddKey: SortKey = 'timestamp';
   readonly boundaryTile = 32768;
+  readonly sortKeyOptions: { key: SortKey; label: string }[] = [
+    { key: 'timestamp', label: 'Date/Time' },
+    { key: 'score', label: 'Score' },
+    { key: 'maxTile', label: 'Max Tile' },
+    { key: 'engine', label: 'Engine' },
+    { key: 'gameMode', label: 'Game Mode' },
+    { key: 'parity', label: 'Parity' },
+    { key: 'compare', label: 'Compare' },
+    { key: 'moves', label: 'Moves' },
+    { key: 'replayOutcome', label: 'Replay Outcome' },
+    { key: 'runOutcome', label: 'Run Outcome' },
+    { key: 'topTiles', label: 'Top Tiles' },
+    { key: 'replayLabel', label: 'Replay Label' },
+    { key: 'actions', label: 'Actions' },
+  ];
 
-  constructor(private history: RunHistoryService) {}
+  constructor(private history: RunHistoryService, private game: GameService) {}
 
   ngOnInit(): void {
     this.history.refreshRuns();
-    this.runs = this.history.getRuns();
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
     this.configEntries = this.history.getConfigHistory();
     this.applySort();
   }
@@ -56,36 +84,36 @@ export class RunHistoryComponent implements OnInit {
   }
 
   clearHistory(): void {
-    this.history.clearRuns();
-    this.runs = [];
-  }
-
-  clearInvalidRuns(): void {
-    this.history.clearInvalidRuns();
-    this.runs = this.history.getRuns();
+    this.history.clearRunsKeepRecord();
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
     this.applySort();
   }
 
-  exportRunsCsv(engine: 'ts' | 'wasm'): void {
-    const rows = this.history
-      .getRuns()
-      .filter((run) => run.engine === engine)
+
+  clearInvalidRuns(): void {
+    this.history.clearInvalidRuns();
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
+    this.applySort();
+  }
+
+
+  exportRunsCsv(): void {
+    const rows = this.filterRunsWithTopTiles(this.history.getRuns())
       .map((run) => ({
-      timestamp: this.formatTimestamp(run.timestamp),
-      reason: run.reason,
-      score: run.score,
-      maxTile: run.maxTile,
-      topTiles: (run.topTiles ?? []).join('|'),
-      engine: run.engine ?? '',
-      gameMode: run.gameMode ?? '',
-      parity: run.parity ? 'yes' : 'no',
-      compare: run.compare ? 'yes' : 'no',
-      depth: run.depth ?? '',
-      aiMoves: run.moves,
-      totalMoves: run.totalMoves,
-      durationMs: run.durationMs,
-    }));
-    this.downloadCsv(`runs-${engine}`, rows);
+        timestamp: this.formatTimestamp(run.timestamp),
+        reason: run.reason,
+        score: run.score,
+        maxTile: run.maxTile,
+        topTiles: (run.topTiles ?? []).join('|'),
+        engine: run.engine ?? '',
+        gameMode: run.gameMode ?? '',
+        parity: run.parity ? 'yes' : 'no',
+        compare: run.compare ? 'yes' : 'no',
+        moves: run.moves,
+        replayLabel: run.replayLabel ?? '',
+        durationMs: run.durationMs,
+      }));
+    this.downloadCsv('runs', rows);
   }
 
   exportConfigCsv(): void {
@@ -153,12 +181,25 @@ export class RunHistoryComponent implements OnInit {
   }
 
   sortBy(key: SortKey): void {
-    if (this.sortKey === key) {
-      this.sortDir = this.sortDir === 'desc' ? 'asc' : 'desc';
+    const existingIndex = this.sortCriteria.findIndex(
+      (criterion) => criterion.key === key
+    );
+    if (existingIndex >= 0) {
+      const next = [...this.sortCriteria];
+      const current = next[existingIndex];
+      next[existingIndex] = {
+        ...current,
+        dir: current.dir === 'desc' ? 'asc' : 'desc',
+      };
+      this.sortCriteria = next;
     } else {
-      this.sortKey = key;
-      this.sortDir = key === 'timestamp' ? 'desc' : 'desc';
+      this.sortCriteria = [
+        ...this.sortCriteria,
+        { key, dir: this.getDefaultSortDir(key) },
+      ];
     }
+    this.sortKey = this.sortCriteria[0].key;
+    this.sortDir = this.sortCriteria[0].dir;
     this.applySort();
   }
 
@@ -169,6 +210,7 @@ export class RunHistoryComponent implements OnInit {
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      second: '2-digit',
     });
   }
 
@@ -185,13 +227,294 @@ export class RunHistoryComponent implements OnInit {
     return mode ?? 'normal';
   }
 
+  renameReplayLabel(run: RunSummary): void {
+    const current = run.replayLabel?.trim() ?? '';
+    if (!current) return;
+    const next = window.prompt('Rename replay label:', current);
+    if (next === null) return;
+    const cleaned = next.trim();
+    if (!cleaned) {
+      window.alert('Replay label cannot be empty.');
+      return;
+    }
+    if (cleaned === current) return;
+    const exists = this.history
+      .getRuns()
+      .some((entry) => (entry.replayLabel ?? '').trim() === cleaned);
+    if (exists) {
+      const ok = window.confirm(
+        'That label already exists. Merge runs and saved spawns under this label?'
+      );
+      if (!ok) return;
+    }
+    this.history.renameReplayLabel(current, cleaned);
+    this.game.renameSavedSpawnLabel(current, cleaned);
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
+    this.applySort();
+  }
+
+  deleteRunsForLabel(run: RunSummary): void {
+    const label = run.replayLabel?.trim() ?? '';
+    if (!label) return;
+    const ok = window.confirm(
+      `Delete all runs, saved spawns, and divergence entries for label \"${label}\"? This cannot be undone.`
+    );
+    if (!ok) return;
+    const removedRuns = this.history.deleteRunsByReplayLabel(label);
+    const removedSpawns = this.game.deleteSavedSpawnsByLabel(label);
+    const removedDivergences = this.deleteDivergencesForLabel(label);
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
+    this.applySort();
+    const divergencePart = removedDivergences
+      ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
+      : '';
+    window.alert(
+      `Deleted ${removedRuns} run${removedRuns === 1 ? '' : 's'} and ${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}.`
+    );
+  }
+
+  getReplayOutcome(run: RunSummary): string {
+    if (run.gameMode !== 'replay') return '';
+    const label = run.replayLabel?.trim() ?? '';
+    if (!label) return '';
+    const savedMoves = this.game.getSavedSpawnMoveCountByLabel(label);
+    if (!savedMoves) return '';
+    if (run.moves >= savedMoves) return 'Full';
+    return this.isReplayDiverged(label) ? 'Diverged' : 'Partial';
+  }
+
+  getRunOutcome(run: RunSummary): string {
+    if (run.outcome) return run.outcome;
+    if (run.gameMode === 'record' && run.reason === 'stop') {
+      return 'From Stopped Run';
+    }
+    return '';
+  }
+
+
+  private isReplayDiverged(label: string): boolean {
+    const baseLabel = label.trim();
+    if (!baseLabel) return false;
+    const refreshSeparator = ' — Refreshed ';
+    const raw = localStorage.getItem('divergenceBacklog');
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return false;
+      return parsed.some((entry) => {
+        const entryLabel = String(entry?.label ?? '');
+        const baseMatch =
+          entryLabel === baseLabel ||
+          entryLabel.startsWith(`${baseLabel}${refreshSeparator}`);
+        if (!baseMatch) return false;
+        const note = String(entry?.note ?? '');
+        return note.startsWith('Replay divergence');
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  clearPartialReplaysForLabel(run: RunSummary): void {
+    if (run.gameMode !== 'replay') return;
+    const label = run.replayLabel?.trim() ?? '';
+    if (!label) return;
+    const savedMoves = this.game.getSavedSpawnMoveCountByLabel(label);
+    if (!savedMoves) return;
+    if (run.moves >= savedMoves) return;
+    const ok = window.confirm(
+      `Remove partial replays for "${label}"? Full replays will remain.`
+    );
+    if (!ok) return;
+    const removed = this.history.deletePartialReplayRunsByLabel(label, savedMoves);
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
+    this.applySort();
+    if (removed > 0) {
+      window.alert(`Removed ${removed} partial replay run${removed === 1 ? '' : 's'}.`);
+    }
+  }
+
+  private deleteDivergencesForLabel(label: string): number {
+    const baseLabel = label.trim();
+    if (!baseLabel) return 0;
+    const refreshSeparator = ' — Refreshed ';
+    const matchesLabel = (entryLabel: string) =>
+      entryLabel === baseLabel ||
+      entryLabel.startsWith(`${baseLabel}${refreshSeparator}`);
+    const purgeList = (key: string): number => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return 0;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return 0;
+        const before = parsed.length;
+        const filtered = parsed.filter(
+          (entry) => !matchesLabel(String(entry?.label ?? ''))
+        );
+        if (filtered.length === before) return 0;
+        localStorage.setItem(key, JSON.stringify(filtered));
+        return before - filtered.length;
+      } catch {
+        return 0;
+      }
+    };
+    return (
+      purgeList('divergenceBacklog') + purgeList('divergenceFixedLog')
+    );
+  }
+
   private applySort(): void {
-    const dir = this.sortDir === 'asc' ? 1 : -1;
     this.runs = [...this.runs].sort((a, b) => {
-      const left = (a[this.sortKey] ?? 0) as number;
-      const right = (b[this.sortKey] ?? 0) as number;
-      if (left === right) return 0;
-      return left > right ? dir : -dir;
+      for (const criterion of this.sortCriteria) {
+        const left = this.getSortValue(a, criterion.key);
+        const right = this.getSortValue(b, criterion.key);
+        const cmp = this.compareValues(left, right, criterion.dir);
+        if (cmp !== 0) return cmp;
+      }
+      return 0;
     });
+  }
+
+
+  private filterRunsWithTopTiles(runs: RunSummary[]): RunSummary[] {
+    return runs;
+  }
+
+  private getSortValue(run: RunSummary, key: SortKey): string | number {
+    switch (key) {
+      case 'engine':
+        return run.engine ?? '';
+      case 'gameMode':
+        return run.gameMode ?? '';
+      case 'parity':
+        return run.parity ? 1 : 0;
+      case 'compare':
+        return run.compare ? 1 : 0;
+      case 'replayOutcome':
+        return this.getReplayOutcome(run);
+      case 'runOutcome':
+        return this.getRunOutcome(run);
+      case 'topTiles':
+        return (run.topTiles ?? []).join(',');
+      case 'replayLabel':
+        return run.replayLabel ?? '';
+      case 'actions':
+        return '';
+      default:
+        return (run[key] ?? 0) as number;
+    }
+  }
+
+  private compareValues(
+    left: string | number,
+    right: string | number,
+    dir: SortDir
+  ): number {
+    if (left === right) return 0;
+    const multiplier = dir === 'asc' ? 1 : -1;
+    if (typeof left === 'number' && typeof right === 'number') {
+      return left > right ? multiplier : -multiplier;
+    }
+    return String(left).localeCompare(String(right)) * multiplier;
+  }
+
+  private getDefaultSortDir(key: SortKey): SortDir {
+    return key === 'timestamp' ? 'desc' : 'desc';
+  }
+
+  openSortDialog(): void {
+    this.sortDialogOpen = true;
+    if (this.availableSortKeys.length > 0) {
+      this.sortAddKey = this.availableSortKeys[0].key;
+    }
+  }
+
+  closeSortDialog(): void {
+    this.sortDialogOpen = false;
+    if (this.sortCriteria.length === 0) {
+      this.sortCriteria = [{ key: 'maxTile', dir: 'desc' }];
+    }
+    this.sortKey = this.sortCriteria[0].key;
+    this.sortDir = this.sortCriteria[0].dir;
+    this.applySort();
+  }
+
+  addSortCriterion(): void {
+    if (this.sortCriteria.some((c) => c.key === this.sortAddKey)) return;
+    this.sortCriteria = [
+      ...this.sortCriteria,
+      { key: this.sortAddKey, dir: this.getDefaultSortDir(this.sortAddKey) },
+    ];
+    this.applySort();
+  }
+
+  removeSortCriterion(index: number): void {
+    this.sortCriteria = this.sortCriteria.filter((_, i) => i !== index);
+    this.applySort();
+  }
+
+  moveSortUp(index: number): void {
+    if (index <= 0) return;
+    const next = [...this.sortCriteria];
+    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    this.sortCriteria = next;
+    this.applySort();
+  }
+
+  moveSortDown(index: number): void {
+    if (index >= this.sortCriteria.length - 1) return;
+    const next = [...this.sortCriteria];
+    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    this.sortCriteria = next;
+    this.applySort();
+  }
+
+  updateSortKey(index: number, nextKey: SortKey): void {
+    const existingIndex = this.sortCriteria.findIndex(
+      (criterion, i) => i !== index && criterion.key === nextKey
+    );
+    const next = [...this.sortCriteria];
+    if (existingIndex >= 0) {
+      const swap = next[existingIndex].key;
+      next[existingIndex].key = next[index].key;
+      next[index].key = swap;
+    } else {
+      next[index].key = nextKey;
+    }
+    this.sortCriteria = next;
+    this.applySort();
+  }
+
+  updateSortDir(index: number, dir: SortDir): void {
+    const next = [...this.sortCriteria];
+    next[index] = { ...next[index], dir };
+    this.sortCriteria = next;
+    this.applySort();
+  }
+
+  resetSortCriteria(): void {
+    this.sortCriteria = [{ key: 'timestamp', dir: 'desc' }];
+    this.sortAddKey = 'timestamp';
+    this.sortKey = 'timestamp';
+    this.sortDir = 'desc';
+    this.applySort();
+  }
+
+  get availableSortKeys(): { key: SortKey; label: string }[] {
+    const used = new Set(this.sortCriteria.map((criterion) => criterion.key));
+    return this.sortKeyOptions.filter((option) => !used.has(option.key));
+  }
+
+  getSortLabel(key: SortKey): string {
+    return this.sortKeyOptions.find((option) => option.key === key)?.label ?? key;
+  }
+
+  getSortIndicator(key: SortKey): string | null {
+    const index = this.sortCriteria.findIndex(
+      (criterion) => criterion.key === key
+    );
+    if (index < 0) return null;
+    const dir = this.sortCriteria[index].dir === 'asc' ? '↑' : '↓';
+    return `${index + 1}${dir}`;
   }
 }

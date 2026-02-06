@@ -13,26 +13,15 @@
     <span class="engine-metrics" *ngIf="invalidRunsCount > 0">
       Integrity issues: {{ invalidRunsCount }}
     </span>
-    <button
-      class="clear-btn"
-      (click)="exportRunsCsv('ts')"
-      *ngIf="totalCount > 0"
-    >
-      Export TS Runs CSV
-    </button>
-    <button
-      class="clear-btn"
-      (click)="exportRunsCsv('wasm')"
-      *ngIf="totalCount > 0"
-    >
-      Export WASM Runs CSV
+    <button class="clear-btn" (click)="exportRunsCsv()" *ngIf="totalCount > 0">
+      Export Runs to CSV
     </button>
     <button
       class="clear-btn"
       (click)="exportConfigCsv()"
       *ngIf="totalCount > 0"
     >
-      Export Config CSV
+      Export Config to CSV
     </button>
     <button class="clear-btn" (click)="clearHistory()" *ngIf="totalCount > 0">
       Clear History
@@ -44,27 +33,94 @@
     >
       Clear Invalid Runs
     </button>
+    <button class="clear-btn" (click)="openSortDialog()" *ngIf="runs.length > 0">
+      Sort...
+    </button>
   </div>
 
   <div class="table-wrap" *ngIf="runs.length > 0; else emptyState">
     <table>
       <thead>
         <tr>
-          <th (click)="sortBy('timestamp')">Date/Time</th>
-          <th class="num-col" (click)="sortBy('score')">Score</th>
-          <th class="num-col" (click)="sortBy('maxTile')">Max Tile</th>
-          <th>Engine</th>
-          <th>Game Mode</th>
-          <th>Parity</th>
-          <th>Compare</th>
-          <th class="num-col">AI Moves</th>
-          <th class="num-col">Total Moves</th>
-          <th class="num-col" (click)="sortBy('depth')">Depth</th>
-          <th>Top Tiles</th>
+          <th (click)="sortBy('timestamp')">
+            Date/Time
+            <span class="sort-indicator" *ngIf="getSortIndicator('timestamp')">
+              {{ getSortIndicator('timestamp') }}
+            </span>
+          </th>
+          <th class="num-col" (click)="sortBy('score')">
+            Score
+            <span class="sort-indicator" *ngIf="getSortIndicator('score')">
+              {{ getSortIndicator('score') }}
+            </span>
+          </th>
+          <th class="num-col" (click)="sortBy('maxTile')">
+            Max Tile
+            <span class="sort-indicator" *ngIf="getSortIndicator('maxTile')">
+              {{ getSortIndicator('maxTile') }}
+            </span>
+          </th>
+          <th (click)="sortBy('engine')">
+            Engine
+            <span class="sort-indicator" *ngIf="getSortIndicator('engine')">
+              {{ getSortIndicator('engine') }}
+            </span>
+          </th>
+          <th (click)="sortBy('gameMode')">
+            Game Mode
+            <span class="sort-indicator" *ngIf="getSortIndicator('gameMode')">
+              {{ getSortIndicator('gameMode') }}
+            </span>
+          </th>
+          <th (click)="sortBy('parity')">
+            Parity
+            <span class="sort-indicator" *ngIf="getSortIndicator('parity')">
+              {{ getSortIndicator('parity') }}
+            </span>
+          </th>
+          <th (click)="sortBy('compare')">
+            Compare
+            <span class="sort-indicator" *ngIf="getSortIndicator('compare')">
+              {{ getSortIndicator('compare') }}
+            </span>
+          </th>
+          <th class="num-col" (click)="sortBy('moves')">
+            Moves
+            <span class="sort-indicator" *ngIf="getSortIndicator('moves')">
+              {{ getSortIndicator('moves') }}
+            </span>
+          </th>
+          <th (click)="sortBy('replayOutcome')">
+            Replay Outcome
+            <span class="sort-indicator" *ngIf="getSortIndicator('replayOutcome')">
+              {{ getSortIndicator('replayOutcome') }}
+            </span>
+          </th>
+          <th (click)="sortBy('runOutcome')">
+            Run Outcome
+            <span class="sort-indicator" *ngIf="getSortIndicator('runOutcome')">
+              {{ getSortIndicator('runOutcome') }}
+            </span>
+          </th>
+          <th (click)="sortBy('replayLabel')">
+            Replay Label
+            <span class="sort-indicator" *ngIf="getSortIndicator('replayLabel')">
+              {{ getSortIndicator('replayLabel') }}
+            </span>
+          </th>
+          <th>
+            Actions
+          </th>
+          <th (click)="sortBy('topTiles')">
+            Top Tiles
+            <span class="sort-indicator" *ngIf="getSortIndicator('topTiles')">
+              {{ getSortIndicator('topTiles') }}
+            </span>
+          </th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let run of tsRuns">
+        <tr *ngFor="let run of runs">
           <td>{{ formatTimestamp(run.timestamp) }}</td>
           <td class="num-col">{{ run.score }}</td>
           <td class="num-col">{{ run.maxTile }}</td>
@@ -73,24 +129,37 @@
           <td>{{ run.parity ? 'yes' : 'no' }}</td>
           <td>{{ run.compare ? 'yes' : 'no' }}</td>
           <td class="num-col">{{ run.moves }}</td>
-          <td class="num-col">{{ run.totalMoves }}</td>
-          <td class="num-col">{{ run.depth ?? '' }}</td>
-          <td>{{ (run.topTiles ?? []).join(', ') }}</td>
-        </tr>
-        <tr class="engine-divider" *ngIf="tsRuns.length && wasmRuns.length">
-          <td colspan="11"></td>
-        </tr>
-        <tr *ngFor="let run of wasmRuns">
-          <td>{{ formatTimestamp(run.timestamp) }}</td>
-          <td class="num-col">{{ run.score }}</td>
-          <td class="num-col">{{ run.maxTile }}</td>
-          <td>{{ run.engine ?? '' }}</td>
-          <td>{{ formatGameMode(run.gameMode) }}</td>
-          <td>{{ run.parity ? 'yes' : 'no' }}</td>
-          <td>{{ run.compare ? 'yes' : 'no' }}</td>
-          <td class="num-col">{{ run.moves }}</td>
-          <td class="num-col">{{ run.totalMoves }}</td>
-          <td class="num-col">{{ run.depth ?? '' }}</td>
+          <td>{{ getReplayOutcome(run) }}</td>
+          <td>{{ getRunOutcome(run) }}</td>
+          <td>
+            <button
+              *ngIf="run.replayLabel"
+              type="button"
+              class="link-btn"
+              (click)="renameReplayLabel(run)"
+            >
+              {{ run.replayLabel }}
+            </button>
+            <span *ngIf="!run.replayLabel"></span>
+          </td>
+          <td class="num-col">
+            <button
+              *ngIf="run.gameMode === 'record' && run.replayLabel"
+              type="button"
+              class="link-btn"
+              (click)="deleteRunsForLabel(run)"
+            >
+              Delete All
+            </button>
+            <button
+              *ngIf="run.gameMode === 'replay' && getReplayOutcome(run) === 'Partial'"
+              type="button"
+              class="link-btn"
+              (click)="clearPartialReplaysForLabel(run)"
+            >
+              Clear Replays
+            </button>
+          </td>
           <td>{{ (run.topTiles ?? []).join(', ') }}</td>
         </tr>
       </tbody>
@@ -100,4 +169,68 @@
   <ng-template #emptyState>
     <div class="empty">No runs recorded yet.</div>
   </ng-template>
+</div>
+
+<div class="sort-overlay" *ngIf="sortDialogOpen">
+  <div class="sort-modal">
+    <h3>Sort Runs</h3>
+    <div class="sort-list">
+      <div class="sort-row" *ngFor="let criterion of sortCriteria; let i = index">
+        <span class="sort-index">{{ i + 1 }}</span>
+        <select
+          [ngModel]="criterion.key"
+          (ngModelChange)="updateSortKey(i, $any($event))"
+        >
+          <option *ngFor="let option of sortKeyOptions" [ngValue]="option.key">
+            {{ option.label }}
+          </option>
+        </select>
+        <select
+          [ngModel]="criterion.dir"
+          (ngModelChange)="updateSortDir(i, $any($event))"
+        >
+          <option [ngValue]="'asc'">Ascending</option>
+          <option [ngValue]="'desc'">Descending</option>
+        </select>
+        <div class="sort-row-actions">
+          <button
+            type="button"
+            (click)="moveSortUp(i)"
+            [disabled]="i === 0"
+          >
+            Move Up
+          </button>
+          <button
+            type="button"
+            (click)="moveSortDown(i)"
+            [disabled]="i === sortCriteria.length - 1"
+          >
+            Move Down
+          </button>
+          <button type="button" (click)="removeSortCriterion(i)">Remove</button>
+        </div>
+      </div>
+    </div>
+    <div class="sort-add">
+      <select [(ngModel)]="sortAddKey">
+        <option
+          *ngFor="let option of availableSortKeys"
+          [ngValue]="option.key"
+        >
+          {{ option.label }}
+        </option>
+      </select>
+      <button
+        type="button"
+        (click)="addSortCriterion()"
+        [disabled]="availableSortKeys.length === 0"
+      >
+        Add sort
+      </button>
+    </div>
+    <div class="sort-actions">
+      <button type="button" (click)="resetSortCriteria()">Reset</button>
+      <button type="button" (click)="closeSortDialog()">Done</button>
+    </div>
+  </div>
 </div>

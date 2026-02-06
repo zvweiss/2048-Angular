@@ -34,5 +34,21 @@ This branch focuses on improving TS/WASM parity, replay tooling, run analytics, 
 
 ---
 
+## Commit Log
+
+### 25a8be87 — feature/improved-depth-control (2026-02-02)
+- Goal: consolidate parity/replay tooling, run analytics, and AI depth controls while preserving UI usability.
+- Outcome: added record/replay modes with saved spawns/moves, parity comparisons and divergence capture, run integrity detection with modal + batch halt, expanded run history fields and CSV export, UI updates for AI settings/debug controls, favicon update, and deploy:valet favicon copy.
+- Key decisions: parity mode required for meaningful TS vs WASM comparison; record only on WASM; stop batch when integrity issues occur; divergence snapshots stored in localStorage for analysis.
+- Tests/Validation: none recorded.
+- Open questions: see branch-level Open Questions above.
+
+### 97a5037b — tweak package.json (2026-01-30)
+- Goal: add a lightweight post-deploy verification step for GitHub Pages.
+- Outcome: added `deploy:check` script to curl the site root, main bundle, and WASM asset headers.
+- Key decisions: keep checks fast and header-only for a smoke test.
+- Tests/Validation: none recorded (script added for manual use).
+- Open questions: none.
+
 ### Notes
 This document is intended as a narrative log of the collaboration and product decisions. Detailed code changes remain in Git history.

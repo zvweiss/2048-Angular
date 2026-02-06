@@ -72,6 +72,27 @@ td {
   border-bottom: 1px solid #e4dbd0;
 }
 
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: #2b2622;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: #5a4a3c;
+}
+
+
+th:last-child,
+td:last-child {
+  text-align: right;
+}
+
 .num-col {
   text-align: right;
 }
@@ -81,6 +102,20 @@ th {
   cursor: pointer;
   user-select: none;
   font-weight: 700;
+}
+
+.sort-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3a2f25;
+  background: #d2c3b4;
+  border: 1px solid #b8a797;
+  border-radius: 999px;
 }
 
 tr:last-child td {
@@ -98,4 +133,115 @@ tr:last-child td {
   background: #fbf7f2;
   border: 1px dashed #d8cec1;
   border-radius: 10px;
+}
+
+.sort-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(32, 24, 18, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.sort-modal {
+  width: min(720px, 92vw);
+  background: #fbf7f2;
+  border: 1px solid #d8cec1;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+}
+
+.sort-modal h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.sort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sort-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 140px auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.sort-index {
+  font-weight: 700;
+  color: #5a4a3c;
+}
+
+.sort-row select {
+  border: 1px solid #d8cec1;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.sort-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sort-row-actions button {
+  border: 1px solid #b8a797;
+  background: #d2c3b4;
+  color: #3a2f25;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sort-row-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sort-add {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.sort-add select {
+  flex: 1;
+  border: 1px solid #d8cec1;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.sort-add button {
+  border: 1px solid #b8a797;
+  background: #d2c3b4;
+  color: #3a2f25;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sort-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sort-actions button {
+  border: 1px solid #b8a797;
+  background: #d2c3b4;
+  color: #3a2f25;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
 }
