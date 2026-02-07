@@ -3,6 +3,7 @@
     <div class="nav-metrics">
       <div class="nav-scores">
         <span class="score-chip">Score {{ score$ | async }}</span>
+        <span class="score-chip">Moves {{ moveCount$ | async }}</span>
         <span class="score-chip best-chip">Best TS {{ (bestScores$ | async)?.ts }}</span>
         <span class="score-chip best-chip">Best WASM {{ (bestScores$ | async)?.wasm }}</span>
       </div>

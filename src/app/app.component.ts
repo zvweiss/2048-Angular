@@ -10,5 +10,5 @@ import { RouterOutlet } from '@angular/router';
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
-  debugEnabled = true; // toggle this to show/hide debug panel
+  debugEnabled = TextTrackCue; // toggle this to show/hide debug panel
 }

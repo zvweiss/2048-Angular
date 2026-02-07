@@ -225,21 +225,6 @@ export class GameService {
     this.spawnLabel = '';
   }
 
-  clearSpawnLog(): void {
-    this.spawnLog = [];
-    this.spawnIndex = 0;
-    this.moveLog = [];
-    this.moveIndex = 0;
-    this.replayExhausted = false;
-    this.spawnLabel = '';
-    this.savedSpawns = [];
-    this.currentSavedSpawnId = null;
-    localStorage.removeItem('savedSpawns');
-    localStorage.removeItem('spawnLog');
-    localStorage.removeItem('moveLog');
-    localStorage.removeItem('spawnLabel');
-  }
-
   renameSavedSpawnLabel(oldLabel: string, newLabel: string): void {
     this.loadSavedSpawnsFromStorage();
     const from = oldLabel.trim();
@@ -303,13 +288,57 @@ export class GameService {
             'replay label already exists',
             'good. duplicate replay label could not be created',
           ]);
-          const filtered = parsed.filter((entry) => {
+          const normalizeMove = (move: unknown): Direction | null => {
+            if (typeof move === 'string') {
+              const normalized = move.trim().toLowerCase();
+              if (
+                normalized === 'up' ||
+                normalized === 'down' ||
+                normalized === 'left' ||
+                normalized === 'right'
+              ) {
+                return normalized as Direction;
+              }
+              return null;
+            }
+            if (typeof move === 'number') {
+              switch (move) {
+                case 0:
+                  return 'up';
+                case 1:
+                  return 'down';
+                case 2:
+                  return 'left';
+                case 3:
+                  return 'right';
+                default:
+                  return null;
+              }
+            }
+            return null;
+          };
+          let normalizedMoves = false;
+          const filtered = parsed
+            .map((entry) => {
+              const rawMoves = Array.isArray(entry.moveLog) ? entry.moveLog : [];
+              const moveLog = rawMoves
+                .map((move) => normalizeMove(move))
+                .filter((move): move is Direction => Boolean(move));
+              if (rawMoves.length !== moveLog.length) {
+                normalizedMoves = true;
+              }
+              return {
+                ...entry,
+                moveLog,
+              };
+            })
+            .filter((entry) => {
             const label = entry.label?.trim().toLowerCase() ?? '';
             if (!label) return true;
             return !invalidLabels.has(label);
           });
           this.savedSpawns = filtered;
-          if (filtered.length !== parsed.length) {
+          if (filtered.length !== parsed.length || normalizedMoves) {
             this.persistSavedSpawns();
           }
           return;

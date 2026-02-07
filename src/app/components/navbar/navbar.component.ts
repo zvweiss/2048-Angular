@@ -18,11 +18,13 @@ import {
 })
 export class NavbarComponent implements OnInit {
   score$!: Observable<number>;
+  moveCount$!: Observable<number>;
   bestScores$!: Observable<BestScoresByEngine>;
   runs$!: Observable<RunSummary[]>;
 
   constructor(private game: GameService, private history: RunHistoryService) {
     this.score$ = game.score$;
+    this.moveCount$ = game.moveCount$;
     this.bestScores$ = history.bestScores$;
     this.runs$ = history.runs$;
   }

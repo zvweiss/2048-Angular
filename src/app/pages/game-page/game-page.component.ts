@@ -10,6 +10,7 @@ import {
   OnInit,
   ViewChild,
   ElementRef,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
@@ -111,14 +112,48 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private aiRunStartMoves = 0;
   private aiRunAccumulatedMoves = 0;
   private aiRunLogged = false;
+  private lastStopOrigin: 'user' | 'replay-exhausted' | 'divergence' | 'tie' | 'system' =
+    'system';
   private lastRunMode: 'normal' | 'record' | 'replay' = 'normal';
   private replayRunLoggedAtCompletion = false;
   gameOverMessage = 'No more valid moves. Try again!';
   replayStoppedEarly = false;
   replayStoppedEarlyMessage = '';
+  replayCompletedActive = false;
+  replayCompletedMessage = '';
+  validateModalActive = false;
+  validateInfoActive = false;
+  validateInfoMessage = '';
+  validationIssues: {
+    id: string;
+    label: string;
+    kind: 'invalid-saved-spawn' | 'orphan-run' | 'needs-code';
+    details: string[];
+    selected: boolean;
+    fixable: boolean;
+  }[] = [];
   confirmStopSaveActive = false;
   confirmStopSaveLabel = '';
   confirmStopSaveError = '';
+  exitRecordConfirmActive = false;
+  private suppressRecordExitPrompt = false;
+  private exitRecordAction: 'restore' | 'restart' = 'restore';
+  backlogDeleteConfirmActive = false;
+  backlogDeleteConfirmMessage = '';
+  private backlogDeleteLabel = '';
+  private backlogDeleteIsRefreshed = false;
+  private preRecordState: {
+    spawnMode: 'normal' | 'record' | 'replay';
+    aiEngine: 'ts' | 'wasm';
+    aiCompareEnabled: boolean;
+    aiComparePause: boolean;
+    aiComparePauseOnTie: boolean;
+    compareEngines: boolean;
+    pauseOnDivergence: boolean;
+    parityMode: boolean;
+    selectedReplayId: string | null;
+    spawnLabel: string;
+  } | null = null;
   private aiGameOverHandled = false;
   private aiPausedForNav = false;
   private destroy$ = new Subject<void>();
@@ -143,13 +178,15 @@ export class GamePageComponent implements OnInit, OnDestroy {
   aiDebugEnabled = false;
   parityMode = true;
   @ViewChild('aiSettings') aiSettings?: ElementRef<HTMLDetailsElement>;
+  @ViewChild('spawnModeSelect') spawnModeSelect?: ElementRef<HTMLSelectElement>;
 
   constructor(
     public game: GameService,
     private ai: AiService,
     private debug: DebugService,
     private runHistory: RunHistoryService,
-    private router: Router
+    private router: Router,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -332,8 +369,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   move(direction: 'up' | 'down' | 'left' | 'right') {
+    if (this.aiRunning) {
+      this.spawnStatus = 'Run in progress. Manual moves are disabled.';
+      return;
+    }
     if (this.isRecordManualLocked) {
-      this.spawnStatus = 'Recording in progress. Manual moves are disabled.';
+      this.spawnStatus = 'Run in progress. Manual moves are disabled.';
       return;
     }
     if (this.isRecordingLocked) {
@@ -347,10 +388,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   restart(): void {
     if (this.spawnMode === 'record' && this.canSaveSpawns) {
-      const shouldExit = window.confirm(
-        'Exit recording without saving?'
-      );
-      if (!shouldExit) return;
+      this.exitRecordAction = 'restart';
+      this.exitRecordConfirmActive = true;
+      return;
     }
     this.stopAi('stop');
     this.replayStoppedEarly = false;
@@ -381,11 +421,217 @@ export class GamePageComponent implements OnInit, OnDestroy {
   dismissGameOver(): void {
     this.gameOverDismissed = true;
     this.game.dismissGameOver();
-    this.ensureRunLoggedIfMissing('game-over');
+    this.ensureRunLoggedIfMissing('game-over', this.spawnMode);
+    this.stopAi('stop');
+    this.resetAiRunTrackingForNewGame();
+    this.game.startNewGame();
+    this.winFromAiRun = false;
+    this.applyDefaultAiConfig();
+    this.autoBoostStage = 0;
+    this.clearHint();
+    this.spawnMode = 'normal';
+    this.updateSpawnMode();
   }
 
   dismissReplayStoppedEarly(): void {
     this.replayStoppedEarly = false;
+  }
+
+  dismissReplayCompleted(): void {
+    this.replayCompletedActive = false;
+  }
+
+  validateSavedSpawns(): void {
+    const raw = localStorage.getItem('savedSpawns');
+    if (!raw) {
+      this.validationIssues = [];
+      this.validateModalActive = false;
+      this.validateInfoActive = true;
+      this.validateInfoMessage = 'No saved spawns found to validate.';
+      this.spawnStatus = 'No saved spawns found to validate.';
+      return;
+    }
+    let parsed: any[] = [];
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      this.validationIssues = [
+        {
+          id: 'invalid-json',
+          label: '(savedSpawns)',
+          kind: 'invalid-saved-spawn',
+          details: ['savedSpawns is not valid JSON'],
+          selected: true,
+          fixable: true,
+        },
+      ];
+      this.validateModalActive = true;
+      this.validateInfoActive = false;
+      this.spawnStatus = 'Saved spawns data is unreadable.';
+      return;
+    }
+    const boardSize = this.game.getBoardSnapshot().length || 4;
+    const validMoves = new Set(['up', 'down', 'left', 'right']);
+    const results: {
+      id: string;
+      label: string;
+      kind: 'invalid-saved-spawn' | 'orphan-run' | 'needs-code';
+      details: string[];
+      selected: boolean;
+      fixable: boolean;
+    }[] = [];
+    for (const entry of parsed) {
+      const label = String(entry?.label ?? '').trim() || '(no label)';
+      const details: string[] = [];
+      const moveLog = Array.isArray(entry?.moveLog) ? entry.moveLog : [];
+      const spawnLog = Array.isArray(entry?.spawnLog) ? entry.spawnLog : [];
+      if (moveLog.length === 0) {
+        details.push('Move log is empty');
+      }
+      if (spawnLog.length === 0) {
+        details.push('Spawn log is empty');
+      }
+      if (moveLog.length > 0) {
+        const badMove = moveLog.find(
+          (move: any) =>
+            typeof move !== 'string' || !validMoves.has(move.trim().toLowerCase())
+        );
+        if (badMove !== undefined) {
+          details.push(`Invalid move entry: ${String(badMove)}`);
+        }
+      }
+      if (spawnLog.length > 0) {
+        const badSpawn = spawnLog.find((spawn: any) => {
+          const r = spawn?.r;
+          const c = spawn?.c;
+          const value = spawn?.value;
+          if (
+            typeof r !== 'number' ||
+            typeof c !== 'number' ||
+            typeof value !== 'number'
+          ) {
+            return true;
+          }
+          return r < 0 || c < 0 || r >= boardSize || c >= boardSize || value <= 0;
+        });
+        if (badSpawn !== undefined) {
+          details.push('Invalid spawn entry detected');
+        }
+      }
+      if (moveLog.length > 0 && spawnLog.length > 0 && moveLog.length > spawnLog.length) {
+        details.push('Move log longer than spawn log');
+      }
+      if (details.length > 0) {
+        results.push({
+          id: `invalid-saved-spawn:${label}`,
+          label,
+          kind: 'invalid-saved-spawn',
+          details,
+          selected: true,
+          fixable: true,
+        });
+      }
+    }
+    const savedLabels = new Set(
+      parsed.map((entry) => String(entry?.label ?? '').trim()).filter((l) => l)
+    );
+    const orphanRuns = this.runHistory
+      .getRuns()
+      .filter(
+        (run) =>
+          (run.gameMode === 'record' || run.gameMode === 'replay') &&
+          Boolean(run.replayLabel?.trim()) &&
+          !savedLabels.has(run.replayLabel!.trim())
+      );
+    const orphanLabels = [...new Set(orphanRuns.map((run) => run.replayLabel!.trim()))];
+    for (const label of orphanLabels) {
+      results.push({
+        id: `orphan-run:${label}`,
+        label,
+        kind: 'orphan-run',
+        details: ['Runs exist but saved spawns are missing'],
+        selected: true,
+        fixable: true,
+      });
+    }
+    this.validationIssues = results;
+    const total = parsed.length;
+    const invalid = results.length;
+    this.spawnStatus =
+      invalid === 0
+        ? `Validated ${total} saved spawns. No issues found.`
+        : `Validated ${total} saved spawns. ${invalid} flagged.`;
+    this.validateModalActive = results.length > 0;
+    if (results.length === 0) {
+      this.validateInfoActive = true;
+      this.validateInfoMessage = `Validated ${total} saved spawns. No issues found.`;
+    } else {
+      this.validateInfoActive = false;
+    }
+  }
+
+  dismissValidateModal(): void {
+    this.validateModalActive = false;
+  }
+
+  dismissValidateInfo(): void {
+    this.validateInfoActive = false;
+  }
+
+  toggleValidationIssue(issue: { selected: boolean }): void {
+    issue.selected = !issue.selected;
+  }
+
+  fixSelectedValidationIssues(): void {
+    const selected = this.validationIssues.filter((issue) => issue.selected);
+    if (selected.length === 0) {
+      this.spawnStatus = 'No validation issues selected.';
+      return;
+    }
+    const needsCode = selected.filter((issue) => !issue.fixable);
+    let removedRuns = 0;
+    let removedSpawns = 0;
+    let removedDivergences = 0;
+    for (const issue of selected) {
+      if (!issue.fixable) {
+        this.addDivergenceBacklog(
+          issue.label,
+          `Validate needs code fix: ${issue.details.join('; ')}`
+        );
+        continue;
+      }
+      if (issue.kind === 'orphan-run') {
+        removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
+      } else if (issue.kind === 'invalid-saved-spawn') {
+        removedSpawns += this.game.deleteSavedSpawnsByLabel(issue.label);
+        removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
+        removedDivergences += this.deleteDivergencesForLabel(issue.label);
+      }
+    }
+    this.savedSpawns = this.getSortedSavedSpawns();
+    this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
+    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    const divergencePart = removedDivergences
+      ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
+      : '';
+    const fixedCount = selected.length - needsCode.length;
+    const needsCodePart =
+      needsCode.length > 0
+        ? `, ${needsCode.length} sent to backlog`
+        : '';
+    this.spawnStatus =
+      `Fixed ${fixedCount} issue${fixedCount === 1 ? '' : 's'}: ` +
+      `${removedRuns} run${removedRuns === 1 ? '' : 's'}, ` +
+      `${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}${needsCodePart}.`;
+    this.validateModalActive = false;
+  }
+
+  get fixableValidationIssues() {
+    return this.validationIssues.filter((issue) => issue.fixable);
+  }
+
+  get needsCodeValidationIssues() {
+    return this.validationIssues.filter((issue) => !issue.fixable);
   }
 
   onSwipe(direction: 'up' | 'down' | 'left' | 'right') {
@@ -394,6 +640,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   toggleAiRun(): void {
     if (this.aiRunning) {
+      this.lastStopOrigin = 'user';
       this.stopAi('stop');
       return;
     }
@@ -603,11 +850,28 @@ export class GamePageComponent implements OnInit, OnDestroy {
   deleteBacklogEntry(label: string): void {
     const baseLabel = this.getBacklogBaseLabel(label);
     if (!baseLabel) return;
-    if (this.isBacklogRefreshed(label)) {
-      const ok = window.confirm(
-        `Clear replay runs for "${baseLabel}" and remove the refreshed backlog entry? The original backlog entry and saved spawns will remain.`
-      );
-      if (!ok) return;
+    this.backlogDeleteLabel = baseLabel;
+    this.backlogDeleteIsRefreshed = this.isBacklogRefreshed(label);
+    this.backlogDeleteConfirmMessage = this.backlogDeleteIsRefreshed
+      ? `Clear replay runs for "${baseLabel}" and remove the refreshed backlog entry? The original backlog entry and saved spawns will remain.`
+      : `Delete all runs, saved spawns, and backlog entries for "${baseLabel}"? This cannot be undone.`;
+    this.backlogDeleteConfirmActive = true;
+  }
+
+  dismissBacklogDeleteConfirm(): void {
+    this.backlogDeleteConfirmActive = false;
+    this.backlogDeleteConfirmMessage = '';
+    this.backlogDeleteLabel = '';
+    this.backlogDeleteIsRefreshed = false;
+  }
+
+  confirmBacklogDelete(): void {
+    const baseLabel = this.backlogDeleteLabel;
+    if (!baseLabel) {
+      this.dismissBacklogDeleteConfirm();
+      return;
+    }
+    if (this.backlogDeleteIsRefreshed) {
       const removedRuns = this.runHistory.deleteReplayRunsByReplayLabel(
         baseLabel
       );
@@ -621,21 +885,17 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (removedRuns > 0) {
         this.spawnStatus = `Cleared ${removedRuns} replay run${removedRuns === 1 ? '' : 's'} for ${baseLabel}.`;
       }
+      this.dismissBacklogDeleteConfirm();
       return;
     }
-    const ok = window.confirm(
-      `Delete all runs, saved spawns, and backlog entries for "${baseLabel}"? This cannot be undone.`
-    );
-    if (!ok) return;
     const removedRuns = this.runHistory.deleteRunsByReplayLabel(baseLabel);
     const removedSpawns = this.game.deleteSavedSpawnsByLabel(baseLabel);
     const removedDivergences = this.deleteDivergencesForLabel(baseLabel);
     const divergencePart = removedDivergences
       ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
       : '';
-    window.alert(
-      `Deleted ${removedRuns} run${removedRuns === 1 ? '' : 's'} and ${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}.`
-    );
+    this.spawnStatus = `Deleted ${removedRuns} run${removedRuns === 1 ? '' : 's'} and ${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}.`;
+    this.dismissBacklogDeleteConfirm();
   }
 
   async copyDivergenceSnapshot(): Promise<void> {
@@ -864,14 +1124,38 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   updateSpawnMode(): void {
     const previousMode = this.lastSpawnMode;
+    if (this.spawnMode === 'record' && previousMode !== 'record') {
+      this.preRecordState = {
+        spawnMode: previousMode,
+        aiEngine: this.aiEngine,
+        aiCompareEnabled: this.aiCompareEnabled,
+        aiComparePause: this.aiComparePause,
+        aiComparePauseOnTie: this.aiComparePauseOnTie,
+        compareEngines: this.compareEngines,
+        pauseOnDivergence: this.pauseOnDivergence,
+        parityMode: this.parityMode,
+        selectedReplayId: this.selectedReplayId,
+        spawnLabel: this.spawnLabel,
+      };
+    }
     if (
       previousMode === 'record' &&
       this.spawnMode !== 'record' &&
       !this.recordingSaved &&
-      this.canSaveSpawns
+      (this.game.getSpawnLogLength() > 0 ||
+        this.game.getMoveLogLength() > 0 ||
+        this.game.getMoveCountSnapshot() > 0)
     ) {
-      window.confirm('Exit recording without saving?');
-      this.spawnMode = 'normal';
+      if (!this.suppressRecordExitPrompt) {
+        this.spawnMode = 'record';
+        this.exitRecordAction = 'restore';
+        this.exitRecordConfirmActive = true;
+        this.cdr.detectChanges();
+        return;
+      }
+    }
+    if (this.suppressRecordExitPrompt) {
+      this.suppressRecordExitPrompt = false;
     }
     if (this.spawnMode === 'record' && this.aiEngine !== 'wasm') {
       this.spawnMode = 'normal';
@@ -937,7 +1221,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.replayParityStatus = 'Recording new game.';
       this.replaySavedMovesStatus = '';
       this.replayRunMovesStatus = '';
-      this.spawnStatus = 'Recording spawns.';
+      this.spawnStatus = 'Recording spawns. Save to finalize, or abandon the recording run.';
       this.tiePauseStatus = '';
       this.tiePaused = false;
       this.lastTiePauseMove = null;
@@ -1041,6 +1325,27 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
+  private reconcileRunsWithSavedSpawns(): void {
+    const savedLabels = new Set(
+      this.game
+        .getSavedSpawnsMeta()
+        .map((spawn) => spawn.label?.trim() ?? '')
+        .filter((label) => label.length > 0)
+    );
+    const labelsToRemove = new Set<string>();
+    for (const run of this.runHistory.getRuns()) {
+      const label = run.replayLabel?.trim();
+      if (!label) continue;
+      if (run.gameMode !== 'record' && run.gameMode !== 'replay') continue;
+      if (!savedLabels.has(label)) {
+        labelsToRemove.add(label);
+      }
+    }
+    for (const label of labelsToRemove) {
+      this.runHistory.deleteRunsByReplayLabel(label);
+    }
+  }
+
   get spawnModeLocked(): boolean {
     return false;
   }
@@ -1067,6 +1372,68 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.confirmStopSaveActive = false;
     this.confirmStopSaveLabel = '';
     this.confirmStopSaveError = '';
+  }
+
+  dismissExitRecordConfirm(): void {
+    this.exitRecordConfirmActive = false;
+    this.exitRecordAction = 'restore';
+  }
+
+  confirmExitRecordWithoutSaving(): void {
+    this.exitRecordConfirmActive = false;
+    this.game.clearRecording();
+    this.recordingSaved = false;
+    if (this.exitRecordAction === 'restart') {
+      this.exitRecordAction = 'restore';
+      this.suppressRecordExitPrompt = true;
+      this.stopAi('stop');
+      this.replayStoppedEarly = false;
+      this.resetAiRunTracking();
+      this.clearDivergences();
+      this.game.startNewGame();
+      this.winFromAiRun = false;
+      this.applyDefaultAiConfig();
+      this.autoBoostStage = 0;
+      this.clearHint();
+      this.spawnMode = 'normal';
+      this.updateSpawnMode();
+      return;
+    }
+    const snapshot = this.preRecordState;
+    this.suppressRecordExitPrompt = true;
+    if (snapshot) {
+      this.spawnMode = snapshot.spawnMode;
+      this.aiEngine = snapshot.aiEngine;
+      this.aiCompareEnabled = snapshot.aiCompareEnabled;
+      this.aiComparePause = snapshot.aiComparePause;
+      this.aiComparePauseOnTie = snapshot.aiComparePauseOnTie;
+      this.compareEngines = snapshot.compareEngines;
+      this.pauseOnDivergence = snapshot.pauseOnDivergence;
+      this.parityMode = snapshot.parityMode;
+      this.selectedReplayId = snapshot.selectedReplayId;
+      this.spawnLabel = snapshot.spawnLabel;
+      this.updateAiCompare();
+      this.updateParityMode();
+    } else {
+      this.spawnMode = 'normal';
+    }
+    this.updateSpawnMode();
+    this.resetAiRunTrackingForNewGame();
+    this.game.startNewGame();
+  }
+
+  continueRecordRun(): void {
+    this.exitRecordConfirmActive = false;
+    this.spawnMode = 'record';
+    setTimeout(() => {
+      if (this.spawnModeSelect?.nativeElement) {
+        this.spawnModeSelect.nativeElement.value = 'record';
+      }
+      this.cdr.detectChanges();
+      if (!this.aiRunning && !this.gameOverActive) {
+        this.startAiLoop();
+      }
+    }, 0);
   }
 
   updateConfirmStopSaveLabel(): void {
@@ -1228,27 +1595,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.saveSpawnLogWithLabel(cleaned);
   }
 
-  clearSpawnLog(): void {
-    this.game.clearSpawnLog();
-    this.spawnStatus = 'Recording cleared.';
-    this.replayParityStatus = '';
-    this.replaySavedMovesStatus = '';
-    this.replayRunMovesStatus = '';
-    this.tiePauseStatus = '';
-    this.tiePaused = false;
-    this.lastTiePauseMove = null;
-    this.lastTiePauseHash = null;
-    this.skipTiePauseOnce = false;
-    this.resumeFromTiePause = false;
-    this.recordingSaved = false;
-    this.savedSpawnsAvailable = false;
-    this.spawnLabel = '';
-    this.savedSpawns = [];
-    this.selectedReplayId = null;
-    this.spawnMode = 'normal';
-    this.updateSpawnMode();
-  }
-
 
   updateBatchTotal(): void {
     if (this.batchRemaining < 1) {
@@ -1300,6 +1646,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
             this.lastTiePauseHash = tieHash;
             this.tiePaused = true;
             this.resumeFromTiePause = true;
+            this.lastStopOrigin = 'tie';
             this.stopAi('stop');
             return;
           }
@@ -1309,6 +1656,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const replayLabel = this.spawnLabel || this.game.getSpawnLabel();
           const savedMoves = this.game.getMoveLogLength();
           const runMoves = this.game.getMoveCountSnapshot();
+          const completedReplay = savedMoves > 0 && runMoves >= savedMoves;
           if (savedMoves > 0 && runMoves < savedMoves) {
             this.addDivergenceBacklog(
               replayLabel,
@@ -1320,6 +1668,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
             this.ensureRunLoggedIfMissing('stop', 'replay', replayLabel);
             this.replayRunLoggedAtCompletion = true;
           }
+          if (completedReplay) {
+            this.replayCompletedMessage = `Replay completed: ${runMoves} / ${savedMoves} moves consumed.`;
+            this.replayCompletedActive = true;
+          }
+          this.lastStopOrigin = 'replay-exhausted';
           this.stopAi('stop');
           this.spawnMode = 'normal';
           this.game.setSpawnMode('normal');
@@ -1421,6 +1774,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
                   this.moveFixedToBacklog(label, note);
                 }
               }
+              this.lastStopOrigin = 'divergence';
               this.stopAi('stop');
               return;
             }
@@ -1741,12 +2095,19 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (reason === 'stop' && this.spawnMode === 'replay') {
       const savedMoves = this.game.getMoveLogLength();
       const usedMoves = this.game.getMoveCountSnapshot();
-      if (savedMoves > 0 && usedMoves < savedMoves) {
+      if (
+        (this.lastStopOrigin === 'user' ||
+          this.lastStopOrigin === 'replay-exhausted') &&
+        savedMoves > 0 &&
+        usedMoves < savedMoves
+      ) {
         this.replayStoppedEarly = true;
         this.replayStoppedEarlyMessage =
           `Replay stopped early: ${usedMoves} / ${savedMoves} moves consumed.`;
       }
     }
+
+    this.lastStopOrigin = 'system';
 
     if (reason === 'game-over') {
       const wasReplay = this.spawnMode === 'replay';

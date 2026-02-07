@@ -105,6 +105,10 @@
         </div>
       </div>
 
+      <div class="ai-run-banner" *ngIf="aiRunning">
+        AI run in progress.
+      </div>
+
       <details class="ai-advanced" #aiSettings>
         <summary>AI Settings</summary>
         <label class="ai-speed">
@@ -116,7 +120,7 @@
         </label>
         <div class="ai-spawn-actions">
           <button type="button" (click)="toggleDebugControls()">
-            {{ showDebugControls ? 'Hide Debug Controls' : 'Show Debug Controls' }}
+            {{ showDebugControls ? 'Hide Run Controls' : 'Show Run Controls' }}
           </button>
         </div>
         <div *ngIf="showDebugControls">
@@ -128,6 +132,7 @@
           <label class="ai-speed">
             Game Mode ({{ spawnMode }})
             <select
+              #spawnModeSelect
               [(ngModel)]="spawnMode"
               (change)="updateSpawnMode()"
               [disabled]="spawnModeLocked"
@@ -211,12 +216,8 @@
             >
               Save Spawns
             </button>
-            <button
-              type="button"
-              (click)="clearSpawnLog()"
-              [disabled]="!canClearSpawns"
-            >
-              Clear Spawns
+            <button type="button" (click)="validateSavedSpawns()">
+              Validate Saved Spawns
             </button>
           </div>
           <div class="ai-boost-status">
@@ -361,6 +362,78 @@
       </div>
     </div>
 
+    <!-- REPLAY COMPLETED POPUP -->
+    <div class="overlay" *ngIf="replayCompletedActive">
+      <div class="popup">
+        <h2>✅ Replay Completed</h2>
+        <p>{{ replayCompletedMessage }}</p>
+        <button (click)="dismissReplayCompleted()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- VALIDATE SAVED SPAWNS -->
+    <div class="overlay" *ngIf="validateModalActive">
+      <div class="popup">
+        <h2>Validate Saved Spawns</h2>
+        <p>
+          Fix Selected will resolve issues we can fix now and log the rest to the
+          backlog for code changes.
+        </p>
+        <div class="popup-section" *ngIf="fixableValidationIssues.length">
+          <div class="popup-section-title">Fixable now</div>
+          <div class="popup-list">
+            <label class="popup-check" *ngFor="let issue of fixableValidationIssues">
+              <input
+                type="checkbox"
+                [checked]="issue.selected"
+                (change)="toggleValidationIssue(issue)"
+              />
+              <div class="popup-check-body">
+                <div class="popup-check-label">
+                  {{ issue.label }}
+                  <span class="popup-check-tag">Auto-fix</span>
+                </div>
+                <div class="popup-check-details">{{ issue.details.join('; ') }}</div>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="popup-section" *ngIf="needsCodeValidationIssues.length">
+          <div class="popup-section-title">Requires code changes</div>
+          <div class="popup-list">
+            <label class="popup-check" *ngFor="let issue of needsCodeValidationIssues">
+              <input
+                type="checkbox"
+                [checked]="issue.selected"
+                [disabled]="true"
+                (change)="toggleValidationIssue(issue)"
+              />
+              <div class="popup-check-body">
+                <div class="popup-check-label">
+                  {{ issue.label }}
+                  <span class="popup-check-tag">Needs code</span>
+                </div>
+                <div class="popup-check-details">{{ issue.details.join('; ') }}</div>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="popup-actions">
+          <button (click)="fixSelectedValidationIssues()">Fix Selected</button>
+          <button (click)="dismissValidateModal()">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VALIDATE SAVED SPAWNS INFO -->
+    <div class="overlay" *ngIf="validateInfoActive">
+      <div class="popup">
+        <h2>Validate Saved Spawns</h2>
+        <p>{{ validateInfoMessage }}</p>
+        <button (click)="dismissValidateInfo()">Dismiss</button>
+      </div>
+    </div>
+
     <!-- REPLAY DATA MISSING POPUP -->
     <div class="overlay" *ngIf="replayDataMissingActive">
       <div class="popup">
@@ -376,6 +449,35 @@
         <h2>⚠️ Divergence Label Blocked</h2>
         <p>{{ divergenceLabelBlockedMessage }}</p>
         <button (click)="dismissDivergenceLabelBlocked()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- BACKLOG DELETE CONFIRM -->
+    <div class="overlay" *ngIf="backlogDeleteConfirmActive">
+      <div class="popup">
+        <h2>Confirm Delete</h2>
+        <p>{{ backlogDeleteConfirmMessage }}</p>
+        <div class="popup-actions">
+          <button (click)="confirmBacklogDelete()">Confirm</button>
+          <button (click)="dismissBacklogDeleteConfirm()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXIT RECORD WITHOUT SAVING -->
+    <div class="overlay" *ngIf="exitRecordConfirmActive">
+      <div class="popup">
+        <h2>Leave Recording?</h2>
+        <p>
+          This recording has unsaved spawns. Leaving will discard them and restore
+          the settings from before you started recording.
+        </p>
+        <div class="popup-actions">
+          <button (click)="confirmExitRecordWithoutSaving()">
+            Leave Without Saving
+          </button>
+          <button (click)="continueRecordRun()">Continue Recording</button>
+        </div>
       </div>
     </div>
 
