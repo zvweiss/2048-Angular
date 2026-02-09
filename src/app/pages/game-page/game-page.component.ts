@@ -121,6 +121,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replayStoppedEarlyMessage = '';
   replayCompletedActive = false;
   replayCompletedMessage = '';
+  replayDivergedActive = false;
+  replayDivergedMessage = '';
+  replayDivergedPendingReset = false;
   validateModalActive = false;
   validateInfoActive = false;
   validateInfoMessage = '';
@@ -138,6 +141,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   exitRecordConfirmActive = false;
   private suppressRecordExitPrompt = false;
   private exitRecordAction: 'restore' | 'restart' = 'restore';
+  private saveAndExitRecordPending = false;
   backlogDeleteConfirmActive = false;
   backlogDeleteConfirmMessage = '';
   private backlogDeleteLabel = '';
@@ -238,6 +242,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.savedSpawns = this.getSortedSavedSpawns();
     this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
     this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    this.reconcileRecordRunsWithSavedSpawns();
+    this.reconcileRecordRunsWithSavedSpawns();
     this.loadDivergenceBacklog();
     this.loadDivergenceFixed();
     this.clearDivergences();
@@ -545,13 +551,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
       );
     const orphanLabels = [...new Set(orphanRuns.map((run) => run.replayLabel!.trim()))];
     for (const label of orphanLabels) {
+      const hasArchive = this.game.hasRecordSpawnsArchiveForLabel(label);
       results.push({
         id: `orphan-run:${label}`,
         label,
         kind: 'orphan-run',
-        details: ['Runs exist but saved spawns are missing'],
+        details: hasArchive
+          ? ['Runs exist but saved spawns are missing (archive available)']
+          : ['Runs exist but saved spawns are missing (archive missing)'],
         selected: true,
-        fixable: true,
+        fixable: hasArchive,
       });
     }
     this.validationIssues = results;
@@ -592,6 +601,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     let removedRuns = 0;
     let removedSpawns = 0;
     let removedDivergences = 0;
+    let restoredSpawns = 0;
+    let restoredRuns = 0;
     for (const issue of selected) {
       if (!issue.fixable) {
         this.addDivergenceBacklog(
@@ -601,7 +612,21 @@ export class GamePageComponent implements OnInit, OnDestroy {
         continue;
       }
       if (issue.kind === 'orphan-run') {
-        removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
+        const restored = this.game.restoreSavedSpawnsFromArchive(issue.label);
+        if (restored) {
+          restoredSpawns += 1;
+          const savedId =
+            this.game.getSavedSpawnIdByLabelCached(issue.label) ?? undefined;
+          if (typeof savedId === 'number') {
+            this.runHistory.updateRecordSavedId(issue.label, savedId);
+          }
+          restoredRuns += 1;
+        } else {
+          this.addDivergenceBacklog(
+            issue.label,
+            'Validate could not restore saved spawns: archive missing.'
+          );
+        }
       } else if (issue.kind === 'invalid-saved-spawn') {
         removedSpawns += this.game.deleteSavedSpawnsByLabel(issue.label);
         removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
@@ -614,6 +639,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const divergencePart = removedDivergences
       ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
       : '';
+    const restoredPart =
+      restoredSpawns || restoredRuns
+        ? ` Restored ${restoredSpawns} saved spawn${restoredSpawns === 1 ? '' : 's'} for ${restoredRuns} run${restoredRuns === 1 ? '' : 's'}.`
+        : '';
     const fixedCount = selected.length - needsCode.length;
     const needsCodePart =
       needsCode.length > 0
@@ -622,8 +651,37 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.spawnStatus =
       `Fixed ${fixedCount} issue${fixedCount === 1 ? '' : 's'}: ` +
       `${removedRuns} run${removedRuns === 1 ? '' : 's'}, ` +
-      `${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}${needsCodePart}.`;
+      `${removedSpawns} saved spawn${removedSpawns === 1 ? '' : 's'}${divergencePart}${needsCodePart}.${restoredPart}`;
     this.validateModalActive = false;
+  }
+
+  private reconcileRecordRunsWithSavedSpawns(): void {
+    const savedLabels = new Set(
+      this.savedSpawns.map((entry) => entry.label.trim())
+    );
+    const runs = this.runHistory.getRuns();
+    const labelsToRemove = new Set<string>();
+    for (const run of runs) {
+      if (run.gameMode !== 'record') continue;
+      const label = run.replayLabel?.trim() ?? '';
+      if (!label) continue;
+      const hasSaved =
+        savedLabels.has(label) || this.game.hasRecordSpawnsArchiveForLabel(label);
+      if (!hasSaved) {
+        labelsToRemove.add(label);
+        continue;
+      }
+      if (typeof run.savedId !== 'number') {
+        const savedId = this.game.getSavedSpawnIdByLabelCached(label) ?? undefined;
+        if (typeof savedId === 'number') {
+          this.runHistory.updateRecordSavedId(label, savedId);
+        }
+      }
+    }
+    if (labelsToRemove.size === 0) return;
+    for (const label of labelsToRemove) {
+      this.runHistory.deleteRunsByReplayLabel(label);
+    }
   }
 
   get fixableValidationIssues() {
@@ -1124,6 +1182,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   updateSpawnMode(): void {
     const previousMode = this.lastSpawnMode;
+    const hasUnsavedRecord =
+      !this.recordingSaved &&
+      (this.game.getSpawnLogLength() > 0 ||
+        this.game.getMoveLogLength() > 0 ||
+        this.game.getMoveCountSnapshot() > 0);
+    if (hasUnsavedRecord && this.spawnMode !== 'record') {
+      if (!this.suppressRecordExitPrompt) {
+        this.spawnMode = 'record';
+        this.exitRecordAction = 'restore';
+        this.exitRecordConfirmActive = true;
+        this.cdr.detectChanges();
+        return;
+      }
+    }
     if (this.spawnMode === 'record' && previousMode !== 'record') {
       this.preRecordState = {
         spawnMode: previousMode,
@@ -1168,11 +1240,22 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (!this.selectedReplayId || !this.savedSpawns.some((s) => s.id === this.selectedReplayId)) {
         this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
       }
-      if (this.selectedReplayId) {
-        this.game.loadSavedSpawn(this.selectedReplayId);
-      } else {
-        this.game.loadSpawnLog();
+      if (!this.selectedReplayId) {
+        this.game.resetReplayState();
+        this.spawnMode = 'normal';
+        this.game.setSpawnMode('normal');
+        this.replayParityStatus = 'Replay data missing. Save spawns first.';
+        this.replaySavedMovesStatus = '';
+        this.replayRunMovesStatus = '';
+        this.spawnStatus = 'Replay data missing.';
+        this.replayDataMissingActive = true;
+        this.replayDataMissingMessage =
+          'Replay data is missing. Select a valid recording or save spawns again.';
+        this.savedSpawnsAvailable = false;
+        this.lastSpawnMode = this.spawnMode;
+        return;
       }
+      this.game.loadSavedSpawn(this.selectedReplayId);
       this.spawnLabel = this.game.getSpawnLabel();
       this.replayDataMissingActive = false;
       this.replayDataMissingMessage = '';
@@ -1346,8 +1429,26 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
+  get hasUnsavedRecordData(): boolean {
+    return (
+      this.spawnMode === 'record' &&
+      !this.recordingSaved &&
+      (this.game.getMoveLogLength() > 0 ||
+        this.game.getSpawnLogLength() > 0 ||
+        this.game.getMoveCountSnapshot() > 0)
+    );
+  }
+
+  get runInProgress(): boolean {
+    return !this.gameOverActive && (this.aiRunning || this.game.getMoveCountSnapshot() > 0);
+  }
+
   get spawnModeLocked(): boolean {
-    return false;
+    return this.runInProgress || this.hasUnsavedRecordData;
+  }
+
+  get restartLocked(): boolean {
+    return this.hasUnsavedRecordData;
   }
 
   get hasRecordedSpawns(): boolean {
@@ -1372,6 +1473,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.confirmStopSaveActive = false;
     this.confirmStopSaveLabel = '';
     this.confirmStopSaveError = '';
+    this.saveAndExitRecordPending = false;
   }
 
   dismissExitRecordConfirm(): void {
@@ -1513,7 +1615,28 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.confirmStopSaveError = '';
     this.saveSpawnLogWithLabel(label, 'From Stopped Run');
     this.stopAi('stop');
-    this.spawnMode = 'normal';
+    if (this.saveAndExitRecordPending) {
+      const snapshot = this.preRecordState;
+      this.saveAndExitRecordPending = false;
+      if (snapshot) {
+        this.spawnMode = snapshot.spawnMode;
+        this.aiEngine = snapshot.aiEngine;
+        this.aiCompareEnabled = snapshot.aiCompareEnabled;
+        this.aiComparePause = snapshot.aiComparePause;
+        this.aiComparePauseOnTie = snapshot.aiComparePauseOnTie;
+        this.compareEngines = snapshot.compareEngines;
+        this.pauseOnDivergence = snapshot.pauseOnDivergence;
+        this.parityMode = snapshot.parityMode;
+        this.selectedReplayId = snapshot.selectedReplayId;
+        this.spawnLabel = snapshot.spawnLabel;
+        this.updateAiCompare();
+        this.updateParityMode();
+      } else {
+        this.spawnMode = 'normal';
+      }
+    } else {
+      this.spawnMode = 'normal';
+    }
     this.updateSpawnMode();
     this.resetAiRunTrackingForNewGame();
     this.game.startNewGame();
@@ -1533,9 +1656,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
   continueStoppedRun(): void {
     this.confirmStopSaveActive = false;
     this.confirmStopSaveLabel = '';
+    this.saveAndExitRecordPending = false;
     if (!this.aiRunning && !this.gameOverActive) {
       this.startAiLoop();
     }
+  }
+
+  saveAndExitRecord(): void {
+    this.exitRecordConfirmActive = false;
+    this.saveAndExitRecordPending = true;
+    this.confirmStopSaveLabel = '';
+    this.confirmStopSaveError = '';
+    this.confirmStopSaveActive = true;
   }
 
   private saveSpawnLogWithLabel(label: string, outcome?: string): void {
@@ -1558,10 +1690,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
         'This label is reserved for divergence diagnostics. A backlog entry was created instead. Please choose a different label for a record run.';
       return;
     }
-    this.game.saveSpawnLog(label);
+    const savedEntry = this.game.saveSpawnLog(label, { archiveRecord: true });
     this.spawnLabel = cleanedLabel;
     if (cleanedLabel) {
-      this.runHistory.updateLatestRecordLabel(cleanedLabel);
+      const savedId = savedEntry?.savedId ?? undefined;
+      this.runHistory.updateLatestRecordLabel(cleanedLabel, savedId);
     }
     this.ensureRunLoggedIfMissing('stop', undefined, undefined, outcome);
     this.savedSpawns = this.getSortedSavedSpawns();
@@ -1579,6 +1712,49 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.savedSpawnsAvailable = this.savedSpawns.length > 0;
     this.spawnStatus = 'Recording saved. Restart to record a new run.';
     this.stopAi('stop');
+  }
+
+  private logReplayDivergenceRun(
+    replayLabel: string,
+    moveIndex: number,
+    savedMoves: number
+  ): void {
+    const label = replayLabel.trim();
+    if (!label) return;
+    const savedId = this.game.getSavedSpawnIdByLabelCached(label) ?? undefined;
+    const score = this.game.getScoreSnapshot();
+    const board = this.game.getBoardSnapshot();
+    const maxTile = Math.max(...board.flat());
+    const topTiles = [...board.flat()].sort((a, b) => b - a).slice(0, 4);
+    const existing = this.runHistory.getRuns().some(
+      (run) =>
+        run.gameMode === 'replay' &&
+        (run.replayLabel?.trim() ?? '') === label &&
+        run.moves === moveIndex &&
+        run.maxTile === maxTile &&
+        run.score === score &&
+        run.outcome === 'Diverged'
+    );
+    if (existing) return;
+    this.runHistory.addRun({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      reason: 'stop',
+      outcome: 'Diverged',
+      maxTile,
+      topTiles,
+      engine: this.aiEngine,
+      gameMode: 'replay',
+      parity: this.parityMode,
+      compare: this.compareEngines,
+      depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
+      replayLabel: label,
+      savedId,
+      score,
+      moves: moveIndex,
+      totalMoves: savedMoves,
+      durationMs: this.aiRunAccumulatedMs,
+    });
   }
 
   private promptSaveRecordingOnGameOver(): void {
@@ -1758,26 +1934,33 @@ export class GamePageComponent implements OnInit, OnDestroy {
             if (this.aiDebugEnabled) {
               console.log('Saved divergence snapshot to localStorage (aiDivergences).');
             }
-            if (this.pauseOnDivergence && !skipTieChecks) {
-              const moveIndex = this.game.getMoveCountSnapshot();
-              this.divergenceStatus = `Replay divergence at move ${moveIndex}.`;
-              this.divergenceDetails = `Replay=${replayMove ?? 'null'} | TS=${tsMove ?? 'null'}`;
-              if (this.autoSaveDivergenceEnabled) {
-                const label = this.resolveReplayLabel();
-                if (label) {
-                  const savedMoves = this.game.getMoveLogLength();
-                  const note =
-                    savedMoves > 0
-                      ? `Replay divergence at move ${moveIndex}/${savedMoves}`
-                      : `Replay divergence at move ${moveIndex}`;
-                  this.addDivergenceBacklog(label, note);
-                  this.moveFixedToBacklog(label, note);
-                }
+            const moveIndex = this.game.getMoveCountSnapshot();
+            this.divergenceStatus = `Replay divergence at move ${moveIndex}.`;
+            this.divergenceDetails = `Replay=${replayMove ?? 'null'} | TS=${tsMove ?? 'null'}`;
+            if (this.autoSaveDivergenceEnabled) {
+              const label = this.resolveReplayLabel();
+              if (label) {
+                const savedMoves = this.game.getMoveLogLength();
+                const note =
+                  savedMoves > 0
+                    ? `Replay divergence at move ${moveIndex}/${savedMoves}`
+                    : `Replay divergence at move ${moveIndex}`;
+                this.addDivergenceBacklog(label, note);
+                this.moveFixedToBacklog(label, note);
               }
-              this.lastStopOrigin = 'divergence';
-              this.stopAi('stop');
-              return;
             }
+            const replayLabel = this.resolveReplayLabel();
+            const savedMoves = this.game.getMoveLogLength();
+            this.logReplayDivergenceRun(replayLabel, moveIndex, savedMoves);
+            this.replayDivergedMessage =
+              savedMoves > 0
+                ? `Replay divergence: ${moveIndex} / ${savedMoves} moves consumed.`
+                : `Replay divergence: ${moveIndex} moves consumed.`;
+            this.replayDivergedActive = true;
+            this.replayDivergedPendingReset = true;
+            this.lastStopOrigin = 'divergence';
+            this.stopAi('stop');
+            return;
         }
         }
         this.game.move(replayMove);
@@ -2304,10 +2487,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private updateAiSummary(reason: 'win' | 'game-over' | 'stop'): void {
     const board = this.game.getBoardSnapshot();
     const maxTile = Math.max(...board.flat());
-    const topTiles = [...board.flat()]
-      .filter((value) => value >= 512)
-      .sort((a, b) => b - a)
-      .slice(0, 4);
+    const topTiles = [...board.flat()].sort((a, b) => b - a).slice(0, 4);
     const score = this.game.getScoreSnapshot();
     const totalMoves = this.game.getMoveCountSnapshot();
     const runningMoves = this.aiRunning
@@ -2349,6 +2529,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
         this.spawnMode === 'replay' || this.spawnMode === 'record'
           ? this.game.getSpawnLabel()
           : '';
+      const savedId = savedLabel
+        ? this.game.getSavedSpawnIdByLabelCached(savedLabel) ?? undefined
+        : undefined;
       this.runHistory.addRun({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         timestamp: Date.now(),
@@ -2361,6 +2544,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         compare: this.compareEngines,
         depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
         replayLabel: savedLabel ? savedLabel : undefined,
+        savedId,
         score,
         moves: movesSinceStart,
         totalMoves,
@@ -2377,10 +2561,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   ): void {
     const board = this.game.getBoardSnapshot();
     const maxTile = Math.max(...board.flat());
-    const topTiles = [...board.flat()]
-      .filter((value) => value >= 512)
-      .sort((a, b) => b - a)
-      .slice(0, 4);
+    const topTiles = [...board.flat()].sort((a, b) => b - a).slice(0, 4);
     const score = this.game.getScoreSnapshot();
     const totalMoves = this.game.getMoveCountSnapshot();
     const runningMoves = this.aiRunning
@@ -2420,6 +2601,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
       runMode === 'replay' || runMode === 'record'
         ? replayLabelOverride ?? this.game.getSpawnLabel()
         : '';
+    const savedId = savedLabel
+      ? this.game.getSavedSpawnIdByLabelCached(savedLabel) ?? undefined
+      : undefined;
     if (runMode === 'replay') {
       const savedMoves = this.game.getMoveLogLength();
       if (!savedMoves || movesToLog < savedMoves) {
@@ -2439,6 +2623,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       compare: this.compareEngines,
       depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
       replayLabel: savedLabel ? savedLabel : undefined,
+      savedId,
       score,
       moves: movesToLog,
       totalMoves,
@@ -2516,6 +2701,25 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   dismissRunIntegrityModal(): void {
     this.showRunIntegrityModal = false;
+  }
+
+  dismissReplayDiverged(): void {
+    this.replayDivergedActive = false;
+    this.replayDivergedMessage = '';
+    this.divergenceStatus = '';
+    this.divergenceDetails = '';
+    if (this.replayDivergedPendingReset) {
+      this.replayDivergedPendingReset = false;
+      this.spawnMode = 'normal';
+      this.updateSpawnMode();
+      this.replayParityStatus = '';
+      this.replaySavedMovesStatus = '';
+      this.replayRunMovesStatus = '';
+      this.spawnStatus = '';
+      this.spawnLabel = '';
+      this.resetAiRunTrackingForNewGame();
+      this.game.startNewGame();
+    }
   }
 
   private resetAiRunTrackingForNewGame(keepBatch = false): void {

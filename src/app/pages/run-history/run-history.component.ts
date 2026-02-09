@@ -18,8 +18,8 @@ type SortKey =
   | 'gameMode'
   | 'parity'
   | 'compare'
-  | 'replayOutcome'
-  | 'runOutcome'
+  | 'outcome'
+  | 'savedId'
   | 'topTiles'
   | 'replayLabel'
   | 'actions';
@@ -51,8 +51,8 @@ export class RunHistoryComponent implements OnInit {
     { key: 'parity', label: 'Parity' },
     { key: 'compare', label: 'Compare' },
     { key: 'moves', label: 'Moves' },
-    { key: 'replayOutcome', label: 'Replay Outcome' },
-    { key: 'runOutcome', label: 'Run Outcome' },
+    { key: 'outcome', label: 'Outcome' },
+    { key: 'savedId', label: 'Saved ID' },
     { key: 'topTiles', label: 'Top Tiles' },
     { key: 'replayLabel', label: 'Replay Label' },
     { key: 'actions', label: 'Actions' },
@@ -83,12 +83,6 @@ export class RunHistoryComponent implements OnInit {
     return this.runs.filter((run) => run.engine === 'wasm');
   }
 
-  clearHistory(): void {
-    this.history.clearRunsKeepRecord();
-    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
-    this.applySort();
-  }
-
 
   clearInvalidRuns(): void {
     this.history.clearInvalidRuns();
@@ -110,6 +104,7 @@ export class RunHistoryComponent implements OnInit {
         parity: run.parity ? 'yes' : 'no',
         compare: run.compare ? 'yes' : 'no',
         moves: run.moves,
+        savedId: this.getSavedId(run),
         replayLabel: run.replayLabel ?? '',
         durationMs: run.durationMs,
       }));
@@ -275,12 +270,12 @@ export class RunHistoryComponent implements OnInit {
 
   getReplayOutcome(run: RunSummary): string {
     if (run.gameMode !== 'replay') return '';
+    if (run.outcome) return run.outcome;
     const label = run.replayLabel?.trim() ?? '';
     if (!label) return '';
     const savedMoves = this.game.getSavedSpawnMoveCountByLabel(label);
-    if (!savedMoves) return '';
-    if (run.moves >= savedMoves) return 'Full';
-    return this.isReplayDiverged(label) ? 'Diverged' : 'Partial';
+    if (savedMoves && run.moves >= savedMoves) return 'Consumed all moves';
+    return this.isReplayDiverged(label) ? 'Diverged' : 'Diverged';
   }
 
   getRunOutcome(run: RunSummary): string {
@@ -289,6 +284,20 @@ export class RunHistoryComponent implements OnInit {
       return 'From Stopped Run';
     }
     return '';
+  }
+
+  getOutcome(run: RunSummary): string {
+    if (run.gameMode === 'replay') {
+      return this.getReplayOutcome(run);
+    }
+    return this.getRunOutcome(run);
+  }
+
+  getSavedId(run: RunSummary): number | '' {
+    if (typeof run.savedId === 'number') return run.savedId;
+    const label = run.replayLabel?.trim() ?? '';
+    if (!label) return '';
+    return this.game.getSavedSpawnIdByLabelCached(label) ?? '';
   }
 
 
@@ -332,6 +341,17 @@ export class RunHistoryComponent implements OnInit {
     if (removed > 0) {
       window.alert(`Removed ${removed} partial replay run${removed === 1 ? '' : 's'}.`);
     }
+  }
+
+  removeRun(run: RunSummary): void {
+    if (run.gameMode === 'record') return;
+    const runs = this.history.getRuns();
+    const filtered = runs.filter((entry) => entry.id !== run.id);
+    if (filtered.length === runs.length) return;
+    localStorage.setItem('runHistory', JSON.stringify(filtered));
+    this.history.refreshRuns();
+    this.runs = this.filterRunsWithTopTiles(this.history.getRuns());
+    this.applySort();
   }
 
   private deleteDivergencesForLabel(label: string): number {
@@ -390,10 +410,10 @@ export class RunHistoryComponent implements OnInit {
         return run.parity ? 1 : 0;
       case 'compare':
         return run.compare ? 1 : 0;
-      case 'replayOutcome':
-        return this.getReplayOutcome(run);
-      case 'runOutcome':
-        return this.getRunOutcome(run);
+      case 'outcome':
+        return this.getOutcome(run);
+      case 'savedId':
+        return this.getSavedId(run) || 0;
       case 'topTiles':
         return (run.topTiles ?? []).join(',');
       case 'replayLabel':

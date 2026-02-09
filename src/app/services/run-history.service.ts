@@ -14,6 +14,7 @@ export type RunSummary = {
   compare?: boolean;
   depth?: number;
   replayLabel?: string;
+  savedId?: number;
   score: number;
   moves: number;
   totalMoves: number;
@@ -70,6 +71,30 @@ export class RunHistoryService {
 
   addRun(run: RunSummary): void {
     const runs = this.getRuns();
+    if (run.gameMode === 'record' && run.replayLabel?.trim()) {
+      const normalized = run.replayLabel.trim().toLowerCase();
+      const existingIdx = runs.findIndex(
+        (entry) =>
+          entry.gameMode === 'record' &&
+          (entry.replayLabel?.trim().toLowerCase() ?? '') === normalized
+      );
+      if (existingIdx >= 0) {
+        runs[existingIdx] = { ...runs[existingIdx], ...run };
+        const deduped = runs.filter((entry, idx) => {
+          if (idx === existingIdx) return true;
+          return !(
+            entry.gameMode === 'record' &&
+            (entry.replayLabel?.trim().toLowerCase() ?? '') === normalized
+          );
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+        this.runsSubject.next(deduped);
+        if (run.engine) {
+          this.updateBestScore(run.engine, run.score);
+        }
+        return;
+      }
+    }
     runs.unshift(run);
     if (runs.length > MAX_RUNS) {
       runs.length = MAX_RUNS;
@@ -81,18 +106,65 @@ export class RunHistoryService {
     }
   }
 
-  updateLatestRecordLabel(label: string): void {
+  updateLatestRecordLabel(label: string, savedId?: number): void {
     const cleaned = label.trim();
     if (!cleaned) return;
     const runs = this.getRuns();
+    const normalized = cleaned.toLowerCase();
+    const existingIdx = runs.findIndex(
+      (run) =>
+        run.gameMode === 'record' &&
+        (run.replayLabel?.trim().toLowerCase() ?? '') === normalized
+    );
+    if (existingIdx >= 0) {
+      runs[existingIdx] = {
+        ...runs[existingIdx],
+        replayLabel: cleaned,
+        savedId:
+          typeof savedId === 'number' ? savedId : runs[existingIdx].savedId,
+      };
+      const deduped = runs.filter((run, idx) => {
+        if (idx === existingIdx) return true;
+        return !(
+          run.gameMode === 'record' &&
+          (run.replayLabel?.trim().toLowerCase() ?? '') === normalized
+        );
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+      this.runsSubject.next(deduped);
+      return;
+    }
     const idx = runs.findIndex(
       (run) => run.gameMode === 'record' && !run.replayLabel
     );
     const targetIdx = idx >= 0 ? idx : runs.findIndex((run) => run.gameMode === 'record');
     if (targetIdx < 0) return;
-    runs[targetIdx] = { ...runs[targetIdx], replayLabel: cleaned };
+    runs[targetIdx] = {
+      ...runs[targetIdx],
+      replayLabel: cleaned,
+      savedId: typeof savedId === 'number' ? savedId : runs[targetIdx].savedId,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
     this.runsSubject.next(runs);
+  }
+
+  updateRecordSavedId(label: string, savedId?: number): void {
+    const cleaned = label.trim();
+    if (!cleaned || typeof savedId !== 'number') return;
+    const runs = this.getRuns();
+    let changed = false;
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      if (run.gameMode === 'record' && run.replayLabel?.trim() === cleaned) {
+        runs[i] = { ...run, savedId };
+        changed = true;
+        break;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
+      this.runsSubject.next(runs);
+    }
   }
 
   clearRuns(): void {
@@ -105,7 +177,6 @@ export class RunHistoryService {
     const kept = runs.filter((run) => run.gameMode === 'record');
     localStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
     this.runsSubject.next(kept);
-    this.recomputeBestScores();
   }
 
   clearInvalidRuns(): void {
@@ -113,7 +184,6 @@ export class RunHistoryService {
     const filtered = runs.filter((run) => run.moves <= run.totalMoves);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
     this.runsSubject.next(filtered);
-    this.recomputeBestScores();
   }
 
 
@@ -122,7 +192,6 @@ export class RunHistoryService {
     const filtered = runs.filter((run) => Boolean(run.engine));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
     this.runsSubject.next(filtered);
-    this.recomputeBestScores();
   }
 
   pruneReplayRunsMissingLabel(): void {
@@ -135,7 +204,6 @@ export class RunHistoryService {
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
     this.runsSubject.next(filtered);
-    this.recomputeBestScores();
   }
 
   private pruneRecordRunsMissingLabel(): void {
@@ -149,7 +217,6 @@ export class RunHistoryService {
     if (filtered.length !== runs.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
   }
 
@@ -169,7 +236,6 @@ export class RunHistoryService {
     if (filtered.length !== runs.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
   }
 
@@ -201,7 +267,6 @@ export class RunHistoryService {
     if (removed > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
     return removed;
   }
@@ -220,7 +285,6 @@ export class RunHistoryService {
     if (removed > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
     return removed;
   }
@@ -239,7 +303,6 @@ export class RunHistoryService {
     if (removed > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
     return removed;
   }
@@ -259,7 +322,6 @@ export class RunHistoryService {
     if (filtered.length !== runs.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
   }
 
@@ -277,7 +339,6 @@ export class RunHistoryService {
     if (filtered.length !== runs.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
   }
 
@@ -300,7 +361,6 @@ export class RunHistoryService {
     if (filtered.length !== runs.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       this.runsSubject.next(filtered);
-      this.recomputeBestScores();
     }
   }
 
@@ -357,18 +417,9 @@ export class RunHistoryService {
         // ignore
       }
     }
-    return this.recomputeBestScores();
-  }
-
-  private recomputeBestScores(): BestScoresByEngine {
-    const runs = this.getRuns();
-    const best: BestScoresByEngine = { ts: 0, wasm: 0 };
-    for (const run of runs) {
-      if (run.engine === 'ts' && run.score > best.ts) best.ts = run.score;
-      if (run.engine === 'wasm' && run.score > best.wasm) best.wasm = run.score;
-    }
-    this.saveBestScores(best);
-    return best;
+    const initial: BestScoresByEngine = { ts: 0, wasm: 0 };
+    this.saveBestScores(initial);
+    return initial;
   }
 
   private saveBestScores(scores: BestScoresByEngine): void {

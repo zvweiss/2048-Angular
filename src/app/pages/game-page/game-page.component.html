@@ -7,6 +7,7 @@
         <button
           (click)="restart()"
           title="Restart game"
+          [disabled]="restartLocked"
         >
           🔄
         </button>
@@ -15,7 +16,7 @@
       <div class="control-item">
         <button
           (click)="toggleAiRun()"
-          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive"
+          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || aiCompareEnabled"
           [title]="aiRunning ? 'Stop AI' : 'Run AI'"
         >
           {{ aiRunning ? '🔴' : '🟢' }}
@@ -57,43 +58,59 @@
             </button>
           </div>
         </div>
-        <div class="divergence-backlog" *ngIf="divergenceBacklog.length > 0">
-          <div class="divergence-title">Divergence backlog</div>
-          <div class="divergence-entry" *ngFor="let entry of divergenceBacklog">
-            <div class="divergence-entry-text">
-              <span class="divergence-label">{{ entry.label }}</span>
-              <span class="divergence-note">{{ entry.note }}</span>
+        <details class="divergence-panel" [open]="divergenceBacklog.length > 0">
+          <summary class="collapse-summary">Divergence backlog ({{ divergenceBacklog.length }})</summary>
+          <div class="divergence-backlog">
+            <div
+              class="divergence-empty"
+              *ngIf="divergenceBacklog.length === 0"
+            >
+              No backlog entries yet.
             </div>
-            <div class="divergence-entry-actions">
-              <button type="button" (click)="replayBacklogEntry(entry.label)">
-                Replay
-              </button>
-              <button type="button" (click)="markBacklogFixed(entry.label)">
-                Mark Fixed
-              </button>
-              <button type="button" (click)="deleteBacklogEntry(entry.label)">
-                {{ entry.label.includes(' — Refreshed ') ? 'Clear Replays' : 'Delete All' }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="divergence-backlog" *ngIf="divergenceFixed.length > 0">
-          <div class="divergence-title">Divergence fixed-log</div>
-          <div class="divergence-entry" *ngFor="let entry of divergenceFixed">
-            <div class="divergence-entry-text">
-              <span class="divergence-label">{{ entry.label }}</span>
-              <span class="divergence-note">{{ entry.note }}</span>
-            </div>
-            <div class="divergence-entry-actions">
-              <button type="button" (click)="replayFixedEntry(entry.label)">
-                Replay
-              </button>
-              <button type="button" (click)="dismissFixedEntry(entry.label)">
-                Remove
-              </button>
+            <div class="divergence-entry" *ngFor="let entry of divergenceBacklog">
+              <div class="divergence-entry-text">
+                <span class="divergence-label">{{ entry.label }}</span>
+                <span class="divergence-note">{{ entry.note }}</span>
+              </div>
+              <div class="divergence-entry-actions">
+                <button type="button" (click)="replayBacklogEntry(entry.label)">
+                  Replay
+                </button>
+                <button type="button" (click)="markBacklogFixed(entry.label)">
+                  Mark Fixed
+                </button>
+                <button type="button" (click)="deleteBacklogEntry(entry.label)">
+                  {{ entry.label.includes(' — Refreshed ') ? 'Clear Replays' : 'Delete All' }}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
+        <details class="divergence-panel" [open]="divergenceFixed.length > 0">
+          <summary class="collapse-summary">Divergence fixed-log ({{ divergenceFixed.length }})</summary>
+          <div class="divergence-backlog">
+            <div
+              class="divergence-empty"
+              *ngIf="divergenceFixed.length === 0"
+            >
+              No fixed entries yet.
+            </div>
+            <div class="divergence-entry" *ngFor="let entry of divergenceFixed">
+              <div class="divergence-entry-text">
+                <span class="divergence-label">{{ entry.label }}</span>
+                <span class="divergence-note">{{ entry.note }}</span>
+              </div>
+              <div class="divergence-entry-actions">
+                <button type="button" (click)="replayFixedEntry(entry.label)">
+                  Replay
+                </button>
+                <button type="button" (click)="dismissFixedEntry(entry.label)">
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
         <div class="ai-buttons">
           <button
             class="ai-step-primary"
@@ -105,12 +122,8 @@
         </div>
       </div>
 
-      <div class="ai-run-banner" *ngIf="aiRunning">
-        AI run in progress.
-      </div>
-
       <details class="ai-advanced" #aiSettings>
-        <summary>AI Settings</summary>
+      <summary class="collapse-summary">AI Settings</summary>
         <label class="ai-speed">
           Engine ({{ aiEngine === 'wasm' ? 'WASM' : 'TS' }})
           <select [(ngModel)]="aiEngine" (change)="updateAiEngine()">
@@ -178,18 +191,6 @@
               [(ngModel)]="parityMode"
               (change)="updateParityMode()"
               [disabled]="aiEngine === 'ts' && spawnMode === 'replay'"
-            />
-          </label>
-          <label
-            class="ai-speed"
-            *ngIf="aiEngine !== 'wasm' && spawnMode === 'replay' && aiCompareEnabled"
-          >
-            Pause on divergence
-            <input
-              type="checkbox"
-              [(ngModel)]="aiComparePause"
-              (change)="updateAiCompare()"
-              [disabled]="!aiCompareEnabled"
             />
           </label>
           <label class="ai-speed">
@@ -362,6 +363,15 @@
       </div>
     </div>
 
+    <!-- REPLAY DIVERGED POPUP -->
+    <div class="overlay" *ngIf="replayDivergedActive">
+      <div class="popup">
+        <h2>‼️ Replay Diverged</h2>
+        <p>{{ replayDivergedMessage }}</p>
+        <button (click)="dismissReplayDiverged()">Dismiss</button>
+      </div>
+    </div>
+
     <!-- REPLAY COMPLETED POPUP -->
     <div class="overlay" *ngIf="replayCompletedActive">
       <div class="popup">
@@ -475,6 +485,9 @@
         <div class="popup-actions">
           <button (click)="confirmExitRecordWithoutSaving()">
             Leave Without Saving
+          </button>
+          <button (click)="saveAndExitRecord()">
+            Save & Leave
           </button>
           <button (click)="continueRecordRun()">Continue Recording</button>
         </div>

@@ -23,9 +23,6 @@
     >
       Export Config to CSV
     </button>
-    <button class="clear-btn" (click)="clearHistory()" *ngIf="totalCount > 0">
-      Clear History
-    </button>
     <button
       class="clear-btn"
       (click)="clearInvalidRuns()"
@@ -90,16 +87,16 @@
               {{ getSortIndicator('moves') }}
             </span>
           </th>
-          <th (click)="sortBy('replayOutcome')">
-            Replay Outcome
-            <span class="sort-indicator" *ngIf="getSortIndicator('replayOutcome')">
-              {{ getSortIndicator('replayOutcome') }}
+          <th (click)="sortBy('outcome')">
+            Outcome
+            <span class="sort-indicator" *ngIf="getSortIndicator('outcome')">
+              {{ getSortIndicator('outcome') }}
             </span>
           </th>
-          <th (click)="sortBy('runOutcome')">
-            Run Outcome
-            <span class="sort-indicator" *ngIf="getSortIndicator('runOutcome')">
-              {{ getSortIndicator('runOutcome') }}
+          <th class="num-col" (click)="sortBy('savedId')">
+            Saved ID
+            <span class="sort-indicator" *ngIf="getSortIndicator('savedId')">
+              {{ getSortIndicator('savedId') }}
             </span>
           </th>
           <th (click)="sortBy('replayLabel')">
@@ -129,8 +126,8 @@
           <td>{{ run.parity ? 'yes' : 'no' }}</td>
           <td>{{ run.compare ? 'yes' : 'no' }}</td>
           <td class="num-col">{{ run.moves }}</td>
-          <td>{{ getReplayOutcome(run) }}</td>
-          <td>{{ getRunOutcome(run) }}</td>
+          <td>{{ getOutcome(run) }}</td>
+          <td class="num-col">{{ getSavedId(run) }}</td>
           <td>
             <button
               *ngIf="run.replayLabel"
@@ -158,6 +155,14 @@
               (click)="clearPartialReplaysForLabel(run)"
             >
               Clear Replays
+            </button>
+            <button
+              *ngIf="run.gameMode === 'normal' || run.gameMode === 'replay'"
+              type="button"
+              class="link-btn"
+              (click)="removeRun(run)"
+            >
+              Remove
             </button>
           </td>
           <td>{{ (run.topTiles ?? []).join(', ') }}</td>

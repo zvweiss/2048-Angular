@@ -108,17 +108,55 @@
   margin-bottom: 0.2rem;
 }
 
+.divergence-panel {
+  border: 1px solid #bfae9f;
+  background: #f6f1ea;
+  color: #2f241c;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.collapse-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+}
+
+.collapse-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapse-summary::after {
+  content: '▾';
+  display: inline-block;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+  margin-left: auto;
+}
+
+.divergence-panel[open] .collapse-summary::after,
+.ai-advanced[open] .collapse-summary::after {
+  transform: rotate(180deg);
+}
+
+.divergence-panel .collapse-summary,
+.ai-advanced .collapse-summary {
+  border-bottom: 1px solid #ddd3c7;
+}
+
 .divergence-detail {
   font-size: 0.8rem;
   color: #5a4638;
 }
 
 .divergence-backlog {
-  border: 1px solid #bfae9f;
-  background: #f6f1ea;
-  color: #2f241c;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  margin-top: 0.35rem;
   font-size: 0.85rem;
 }
 
@@ -143,6 +181,12 @@
 .divergence-note {
   font-size: 0.75rem;
   color: #5a4638;
+}
+
+.divergence-empty {
+  font-size: 0.8rem;
+  color: #6a584a;
+  padding: 0.25rem 0;
 }
 
 .divergence-entry-actions {
@@ -352,29 +396,6 @@
   overflow-y: auto;
 }
 
-
-.ai-advanced summary {
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.ai-advanced summary::-webkit-details-marker {
-  display: none;
-}
-
-.ai-advanced summary::after {
-  content: '▾';
-  font-size: 0.9rem;
-  transition: transform 0.15s ease;
-}
-
-.ai-advanced[open] summary::after {
-  transform: rotate(180deg);
-}
 
 .ai-advanced[open] summary {
   margin-bottom: 0.5rem;

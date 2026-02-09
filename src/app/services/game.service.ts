@@ -16,6 +16,7 @@ export class GameService {
   private replayExhausted = false;
   private spawnLabel = '';
   private savedSpawns: SavedSpawn[] = [];
+  private recordSpawnsArchive: SavedSpawn[] = [];
   private currentSavedSpawnId: string | null = null;
 
   private boardSubject = new BehaviorSubject<Board>(this.createEmptyBoard());
@@ -141,10 +142,11 @@ export class GameService {
 
   getSavedSpawnsMeta(): SavedSpawnMeta[] {
     this.loadSavedSpawnsFromStorage();
-    return this.savedSpawns.map(({ id, label, createdAt }) => ({
+    return this.savedSpawns.map(({ id, label, createdAt, savedId }) => ({
       id,
       label,
       createdAt,
+      savedId,
     }));
   }
 
@@ -152,9 +154,30 @@ export class GameService {
     const cleaned = label.trim();
     if (!cleaned) return null;
     this.loadSavedSpawnsFromStorage();
-    const match = this.savedSpawns.find((entry) => entry.label === cleaned);
+    const match =
+      this.savedSpawns.find((entry) => entry.label === cleaned) ??
+      this.recordSpawnsArchive.find((entry) => entry.label === cleaned);
     if (!match) return null;
     return match.moveLog?.length ?? null;
+  }
+
+  getSavedSpawnIdByLabel(label: string): number | null {
+    const cleaned = label.trim();
+    if (!cleaned) return null;
+    this.loadSavedSpawnsFromStorage();
+    const match =
+      this.savedSpawns.find((entry) => entry.label === cleaned) ??
+      this.recordSpawnsArchive.find((entry) => entry.label === cleaned);
+    if (!match) return null;
+    return match.savedId ?? null;
+  }
+
+  getSavedSpawnIdById(id: string): number | null {
+    if (!id) return null;
+    this.loadSavedSpawnsFromStorage();
+    const match = this.savedSpawns.find((entry) => entry.id === id);
+    if (!match) return null;
+    return match.savedId ?? null;
   }
 
 
@@ -185,20 +208,40 @@ export class GameService {
     return next;
   }
 
-  saveSpawnLog(label = ''): void {
+  saveSpawnLog(label = '', options?: { archiveRecord?: boolean }): SavedSpawn {
     this.loadSavedSpawnsFromStorage();
     const cleanedLabel = label.trim();
+    const savedId = this.getNextSavedSpawnId();
     const entry: SavedSpawn = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       label: cleanedLabel,
       createdAt: Date.now(),
+      savedId,
       spawnLog: this.spawnLog.map((entry) => ({ ...entry })),
       moveLog: [...this.moveLog],
     };
     this.savedSpawns.unshift(entry);
+    if (options?.archiveRecord) {
+      this.recordSpawnsArchive = [
+        entry,
+        ...this.recordSpawnsArchive.filter((item) => item.label !== cleanedLabel),
+      ];
+      this.persistRecordSpawnsArchive();
+    }
     this.currentSavedSpawnId = entry.id;
     this.spawnLabel = cleanedLabel;
     this.persistSavedSpawns();
+    return entry;
+  }
+
+  getSavedSpawnIdByLabelCached(label: string): number | null {
+    const cleaned = label.trim();
+    if (!cleaned) return null;
+    const match =
+      this.savedSpawns.find((entry) => entry.label === cleaned) ??
+      this.recordSpawnsArchive.find((entry) => entry.label === cleaned);
+    if (!match) return null;
+    return match.savedId ?? null;
   }
 
   loadSpawnLog(): void {
@@ -225,6 +268,11 @@ export class GameService {
     this.spawnLabel = '';
   }
 
+  resetReplayState(): void {
+    this.clearRecording();
+    this.currentSavedSpawnId = null;
+  }
+
   renameSavedSpawnLabel(oldLabel: string, newLabel: string): void {
     this.loadSavedSpawnsFromStorage();
     const from = oldLabel.trim();
@@ -238,13 +286,44 @@ export class GameService {
       }
       return entry;
     });
+    this.recordSpawnsArchive = this.recordSpawnsArchive.map((entry) => {
+      if (entry.label.trim() === from) {
+        changed = true;
+        return { ...entry, label: to };
+      }
+      return entry;
+    });
     if (this.spawnLabel.trim() === from) {
       this.spawnLabel = to;
       changed = true;
     }
     if (changed) {
       this.persistSavedSpawns();
+      this.persistRecordSpawnsArchive();
     }
+  }
+
+  hasRecordSpawnsArchiveForLabel(label: string): boolean {
+    const cleaned = label.trim();
+    if (!cleaned) return false;
+    this.loadSavedSpawnsFromStorage();
+    return this.recordSpawnsArchive.some((entry) => entry.label === cleaned);
+  }
+
+  restoreSavedSpawnsFromArchive(label: string): boolean {
+    const cleaned = label.trim();
+    if (!cleaned) return false;
+    this.loadSavedSpawnsFromStorage();
+    if (this.savedSpawns.some((entry) => entry.label === cleaned)) {
+      return true;
+    }
+    const entry = this.recordSpawnsArchive.find(
+      (item) => item.label === cleaned
+    );
+    if (!entry) return false;
+    this.savedSpawns = [entry, ...this.savedSpawns];
+    this.persistSavedSpawns();
+    return true;
   }
 
   deleteSavedSpawnsByLabel(label: string): number {
@@ -255,12 +334,17 @@ export class GameService {
     this.savedSpawns = this.savedSpawns.filter(
       (entry) => entry.label.trim() !== target
     );
-    if (this.spawnLabel.trim() === target) {
-      this.spawnLabel = '';
-    }
+    const archiveBefore = this.recordSpawnsArchive.length;
+    this.recordSpawnsArchive = this.recordSpawnsArchive.filter(
+      (entry) => entry.label.trim() !== target
+    );
     const removed = before - this.savedSpawns.length;
-    if (removed > 0) {
+    if (this.spawnLabel.trim() === target || removed > 0) {
+      this.resetReplayState();
+    }
+    if (removed > 0 || archiveBefore !== this.recordSpawnsArchive.length) {
       this.persistSavedSpawns();
+      this.persistRecordSpawnsArchive();
     }
     return removed;
   }
@@ -341,6 +425,10 @@ export class GameService {
           if (filtered.length !== parsed.length || normalizedMoves) {
             this.persistSavedSpawns();
           }
+          this.loadRecordSpawnsArchive();
+          this.normalizeSavedSpawnIds();
+          this.reconcileSavedSpawnsWithHistory();
+          this.mergeRecordSpawnsArchive();
           return;
         }
       } catch {
@@ -359,6 +447,7 @@ export class GameService {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             label: legacyLabel,
             createdAt: Date.now(),
+            savedId: this.getNextSavedSpawnId(),
             spawnLog,
             moveLog,
           };
@@ -374,10 +463,158 @@ export class GameService {
         // ignore legacy migration errors
       }
     }
+    this.loadRecordSpawnsArchive();
+    this.normalizeSavedSpawnIds();
+    this.mergeRecordSpawnsArchive();
   }
 
   private persistSavedSpawns(): void {
     localStorage.setItem('savedSpawns', JSON.stringify(this.savedSpawns));
+  }
+
+  private loadRecordSpawnsArchive(): void {
+    const raw = localStorage.getItem('recordSpawnsArchive');
+    if (!raw) {
+      this.recordSpawnsArchive = [];
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as SavedSpawn[];
+      if (!Array.isArray(parsed)) {
+        this.recordSpawnsArchive = [];
+        return;
+      }
+      this.recordSpawnsArchive = parsed;
+    } catch {
+      this.recordSpawnsArchive = [];
+    }
+  }
+
+  private persistRecordSpawnsArchive(): void {
+    localStorage.setItem(
+      'recordSpawnsArchive',
+      JSON.stringify(this.recordSpawnsArchive)
+    );
+  }
+
+  private mergeRecordSpawnsArchive(): void {
+    if (!this.recordSpawnsArchive.length) return;
+    const existingLabels = new Set(
+      this.savedSpawns.map((entry) => entry.label.trim())
+    );
+    const missing = this.recordSpawnsArchive.filter(
+      (entry) => !existingLabels.has(entry.label.trim())
+    );
+    if (missing.length === 0) return;
+    this.savedSpawns = [...missing, ...this.savedSpawns];
+    this.persistSavedSpawns();
+  }
+
+  private getRecordLabelsFromHistory(): Set<string> {
+    const raw = localStorage.getItem('runHistory');
+    if (!raw) return new Set();
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(
+        parsed
+          .filter((entry) => entry?.gameMode === 'record')
+          .map((entry) => String(entry?.replayLabel ?? '').trim().toLowerCase())
+          .filter((label) => Boolean(label))
+      );
+    } catch {
+      return new Set();
+    }
+  }
+
+  private getDivergenceLabelsFromStorage(): Set<string> {
+    const labels = new Set<string>();
+    const addLabelsFromKey = (key: string) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        parsed.forEach((entry) => {
+          const label = String(entry?.label ?? '').trim().toLowerCase();
+          if (label) labels.add(label);
+        });
+      } catch {
+        // ignore malformed data
+      }
+    };
+    addLabelsFromKey('divergenceBacklog');
+    addLabelsFromKey('divergenceFixedLog');
+    return labels;
+  }
+
+  private reconcileSavedSpawnsWithHistory(): void {
+    const recordLabels = this.getRecordLabelsFromHistory();
+    const divergenceLabels = this.getDivergenceLabelsFromStorage();
+    const allowedLabels = new Set([...recordLabels, ...divergenceLabels]);
+    let changedSaved = false;
+    let changedArchive = false;
+
+    if (this.recordSpawnsArchive.length) {
+      const before = this.recordSpawnsArchive.length;
+      this.recordSpawnsArchive = this.recordSpawnsArchive.filter((entry) =>
+        recordLabels.has(String(entry.label ?? '').trim().toLowerCase())
+      );
+      changedArchive = before !== this.recordSpawnsArchive.length;
+    }
+
+    if (this.savedSpawns.length) {
+      const before = this.savedSpawns.length;
+      this.savedSpawns = this.savedSpawns.filter((entry) =>
+        allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
+      );
+      changedSaved = before !== this.savedSpawns.length;
+    }
+
+    if (changedArchive) {
+      this.persistRecordSpawnsArchive();
+    }
+    if (changedSaved) {
+      this.persistSavedSpawns();
+    }
+  }
+
+  private normalizeSavedSpawnIds(): void {
+    let maxId = 0;
+    const all = [...this.savedSpawns, ...this.recordSpawnsArchive];
+    for (const entry of all) {
+      if (typeof entry.savedId === 'number' && !Number.isNaN(entry.savedId)) {
+        maxId = Math.max(maxId, entry.savedId);
+      }
+    }
+    let changedSaved = false;
+    let changedArchive = false;
+    for (const entry of this.savedSpawns) {
+      if (!entry.savedId || Number.isNaN(Number(entry.savedId))) {
+        maxId += 1;
+        entry.savedId = maxId;
+        changedSaved = true;
+      }
+    }
+    for (const entry of this.recordSpawnsArchive) {
+      if (!entry.savedId || Number.isNaN(Number(entry.savedId))) {
+        maxId += 1;
+        entry.savedId = maxId;
+        changedArchive = true;
+      }
+    }
+    if (changedSaved) {
+      this.persistSavedSpawns();
+    }
+    if (changedArchive) {
+      this.persistRecordSpawnsArchive();
+    }
+  }
+
+  private getNextSavedSpawnId(): number {
+    const all = [...this.savedSpawns, ...this.recordSpawnsArchive];
+    const max = all.reduce((acc, entry) => Math.max(acc, entry.savedId ?? 0), 0);
+    return max + 1;
   }
 
   move(direction: Direction): void {
@@ -632,6 +869,7 @@ export type SavedSpawn = {
   id: string;
   label: string;
   createdAt: number;
+  savedId: number;
   spawnLog: { r: number; c: number; value: number }[];
   moveLog: Direction[];
 };
@@ -640,4 +878,5 @@ export type SavedSpawnMeta = {
   id: string;
   label: string;
   createdAt: number;
+  savedId: number;
 };
