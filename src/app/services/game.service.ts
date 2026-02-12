@@ -43,6 +43,9 @@ export class GameService {
   private winSubject = new BehaviorSubject<boolean>(false);
   win$ = this.winSubject.asObservable();
 
+  private cleanupNoticeSubject = new BehaviorSubject<string | null>(null);
+  cleanupNotice$ = this.cleanupNoticeSubject.asObservable();
+
   private gameOverSubject = new BehaviorSubject<boolean>(false);
   gameOver$ = this.gameOverSubject.asObservable();
 
@@ -552,30 +555,29 @@ export class GameService {
     const recordLabels = this.getRecordLabelsFromHistory();
     const divergenceLabels = this.getDivergenceLabelsFromStorage();
     const allowedLabels = new Set([...recordLabels, ...divergenceLabels]);
-    let changedSaved = false;
-    let changedArchive = false;
+    const unlinkedSaved = this.savedSpawns.filter(
+      (entry) => !allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
+    ).length;
+    const unlinkedArchive = this.recordSpawnsArchive.filter(
+      (entry) => !allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
+    ).length;
 
-    if (this.recordSpawnsArchive.length) {
-      const before = this.recordSpawnsArchive.length;
-      this.recordSpawnsArchive = this.recordSpawnsArchive.filter((entry) =>
-        recordLabels.has(String(entry.label ?? '').trim().toLowerCase())
+    if (unlinkedSaved > 0 || unlinkedArchive > 0) {
+      const parts: string[] = [];
+      if (unlinkedSaved > 0) {
+        parts.push(
+          `${unlinkedSaved} saved spawn${unlinkedSaved === 1 ? '' : 's'}`
+        );
+      }
+      if (unlinkedArchive > 0) {
+        parts.push(
+          `${unlinkedArchive} archived spawn${unlinkedArchive === 1 ? '' : 's'}`
+        );
+      }
+      const detail = parts.join(' and ');
+      this.cleanupNoticeSubject.next(
+        `Detected ${detail} not referenced by run history. Kept for safety.`
       );
-      changedArchive = before !== this.recordSpawnsArchive.length;
-    }
-
-    if (this.savedSpawns.length) {
-      const before = this.savedSpawns.length;
-      this.savedSpawns = this.savedSpawns.filter((entry) =>
-        allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
-      );
-      changedSaved = before !== this.savedSpawns.length;
-    }
-
-    if (changedArchive) {
-      this.persistRecordSpawnsArchive();
-    }
-    if (changedSaved) {
-      this.persistSavedSpawns();
     }
   }
 
