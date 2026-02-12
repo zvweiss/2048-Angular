@@ -104,7 +104,7 @@ export class RunHistoryComponent implements OnInit {
         parity: run.parity ? 'yes' : 'no',
         compare: run.compare ? 'yes' : 'no',
         moves: run.moves,
-        savedId: this.getSavedId(run),
+        savedId: this.getSavedIdDisplay(run),
         replayLabel: run.replayLabel ?? '',
         durationMs: run.durationMs,
       }));
@@ -283,7 +283,10 @@ export class RunHistoryComponent implements OnInit {
     if (run.gameMode === 'record' && run.reason === 'stop') {
       return 'From Stopped Run';
     }
-    return '';
+    if (run.reason === 'game-over') return 'Game Over';
+    if (run.reason === 'win') return 'Win';
+    if (run.reason === 'stop') return 'Stopped';
+    return 'Unknown';
   }
 
   getOutcome(run: RunSummary): string {
@@ -293,11 +296,30 @@ export class RunHistoryComponent implements OnInit {
     return this.getRunOutcome(run);
   }
 
-  getSavedId(run: RunSummary): number | '' {
+  getSavedIdValue(run: RunSummary): number {
     if (typeof run.savedId === 'number') return run.savedId;
     const label = run.replayLabel?.trim() ?? '';
-    if (!label) return '';
-    return this.game.getSavedSpawnIdByLabelCached(label) ?? '';
+    if (!label) return 0;
+    return this.game.getSavedSpawnIdByLabelCached(label) ?? 0;
+  }
+
+  getSavedIdDisplay(run: RunSummary): number | '-' {
+    const value = this.getSavedIdValue(run);
+    return value > 0 ? value : '-';
+  }
+
+  formatBinaryFlag(value: boolean | undefined): 'yes' | 'no' {
+    return value === true ? 'yes' : 'no';
+  }
+
+  getParityDisplay(run: RunSummary): 'yes' | 'no' | 'N/A' {
+    if (run.engine === 'wasm') return 'N/A';
+    return this.formatBinaryFlag(run.parity);
+  }
+
+  getCompareDisplay(run: RunSummary): 'yes' | 'no' | 'N/A' {
+    if (run.engine === 'wasm') return 'N/A';
+    return this.formatBinaryFlag(run.compare);
   }
 
 
@@ -413,7 +435,7 @@ export class RunHistoryComponent implements OnInit {
       case 'outcome':
         return this.getOutcome(run);
       case 'savedId':
-        return this.getSavedId(run) || 0;
+        return this.getSavedIdValue(run);
       case 'topTiles':
         return (run.topTiles ?? []).join(',');
       case 'replayLabel':

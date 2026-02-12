@@ -105,10 +105,10 @@
               {{ getSortIndicator('replayLabel') }}
             </span>
           </th>
-          <th>
+          <th class="actions-col">
             Actions
           </th>
-          <th (click)="sortBy('topTiles')">
+          <th class="top-tiles-col" (click)="sortBy('topTiles')">
             Top Tiles
             <span class="sort-indicator" *ngIf="getSortIndicator('topTiles')">
               {{ getSortIndicator('topTiles') }}
@@ -123,11 +123,11 @@
           <td class="num-col">{{ run.maxTile }}</td>
           <td>{{ run.engine ?? '' }}</td>
           <td>{{ formatGameMode(run.gameMode) }}</td>
-          <td>{{ run.parity ? 'yes' : 'no' }}</td>
-          <td>{{ run.compare ? 'yes' : 'no' }}</td>
+          <td>{{ getParityDisplay(run) }}</td>
+          <td>{{ getCompareDisplay(run) }}</td>
           <td class="num-col">{{ run.moves }}</td>
           <td>{{ getOutcome(run) }}</td>
-          <td class="num-col">{{ getSavedId(run) }}</td>
+          <td class="num-col">{{ getSavedIdDisplay(run) }}</td>
           <td>
             <button
               *ngIf="run.replayLabel"
@@ -139,7 +139,7 @@
             </button>
             <span *ngIf="!run.replayLabel"></span>
           </td>
-          <td class="num-col">
+          <td class="actions-col">
             <button
               *ngIf="run.gameMode === 'record' && run.replayLabel"
               type="button"
@@ -165,7 +165,7 @@
               Remove
             </button>
           </td>
-          <td>{{ (run.topTiles ?? []).join(', ') }}</td>
+          <td class="top-tiles-col">{{ (run.topTiles ?? []).join(', ') }}</td>
         </tr>
       </tbody>
     </table>

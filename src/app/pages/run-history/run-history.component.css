@@ -55,12 +55,14 @@ h2 {
 .table-wrap {
   border: 1px solid #d8cec1;
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: #fbf7f2;
 }
 
 table {
   width: 100%;
+  min-width: 1280px;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -88,13 +90,18 @@ td {
 }
 
 
-th:last-child,
-td:last-child {
+.num-col {
   text-align: right;
 }
 
-.num-col {
+.actions-col {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.top-tiles-col {
   text-align: right;
+  min-width: 140px;
 }
 
 th {
