@@ -92,6 +92,10 @@ This document describes the run-control state/flow at a functional level (not co
 ## Notes
 - This spec is expected to evolve. Each change should be appended as a short section with date + summary.
 
+## 2026-02-12 — Batch Record Auto‑Save
+- Record runs in batch mode auto‑save on game over using an auto‑generated replay label.
+- This applies to any batch size, including single‑run batches, to avoid manual prompts.
+
 ## Persistence Spec (LocalStorage)
 
 This section ties persisted data to the functional behavior described above.
@@ -141,4 +145,3 @@ This section ties persisted data to the functional behavior described above.
 - **Replay run** reads from `savedSpawns` (fallback: `recordSpawnsArchive`) and logs to `runHistory` when completed or diverged.
 - **Validation** checks `runHistory` against `savedSpawns` and may restore from `recordSpawnsArchive`.
 - **Deleting a record line** removes its `savedSpawns` + `recordSpawnsArchive` entries.
-
