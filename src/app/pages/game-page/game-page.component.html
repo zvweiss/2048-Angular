@@ -220,6 +220,20 @@
             <button type="button" (click)="validateSavedSpawns()">
               Validate Saved Spawns
             </button>
+            <button
+              type="button"
+              *ngIf="hasUnsavedRecordData"
+              (click)="requestAbandonRecord()"
+            >
+              Abandon Recording
+            </button>
+            <button
+              type="button"
+              *ngIf="spawnMode !== 'record' && runInProgress"
+              (click)="requestAbandonNormalRun()"
+            >
+              Abandon Run
+            </button>
           </div>
           <div class="ai-boost-status">
             {{ savedSpawnsAvailable
@@ -354,12 +368,49 @@
       </div>
     </div>
 
+    <!-- RESTART CONFIRM -->
+    <div class="overlay" *ngIf="restartConfirmActive">
+      <div class="popup">
+        <h2>Restart Current Run?</h2>
+        <p>
+          The current run is in progress. Restarting will end it and start a new game.
+        </p>
+        <div class="popup-actions">
+          <button (click)="confirmRestartRun()">Restart</button>
+          <button (click)="dismissRestartConfirm()">Continue Run</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODE CHANGE CONFIRM -->
+    <div class="overlay" *ngIf="modeChangeConfirmActive">
+      <div class="popup">
+        <h2>End Current Run?</h2>
+        <p>
+          Switching game mode will end the current run and start a new game.
+        </p>
+        <div class="popup-actions">
+          <button (click)="confirmModeChangeEndRun()">End Run & Switch</button>
+          <button (click)="dismissModeChangeConfirm()">Continue Run</button>
+        </div>
+      </div>
+    </div>
+
     <!-- REPLAY STOPPED EARLY POPUP -->
     <div class="overlay" *ngIf="replayStoppedEarly">
       <div class="popup">
         <h2>⏸ Replay Stopped Early</h2>
         <p>{{ replayStoppedEarlyMessage }}</p>
         <button (click)="dismissReplayStoppedEarly()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- AUTO CLEANUP NOTICE -->
+    <div class="overlay" *ngIf="autoCleanupActive">
+      <div class="popup">
+        <h2>⚠️ Data Integrity Notice</h2>
+        <p>{{ autoCleanupMessage }}</p>
+        <button (click)="dismissAutoCleanup()">Dismiss</button>
       </div>
     </div>
 
@@ -522,6 +573,20 @@
             Confirm Save & End
           </button>
           <button (click)="continueStoppedRun()">Continue Game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABANDON NORMAL RUN -->
+    <div class="overlay" *ngIf="abandonNormalConfirmActive">
+      <div class="popup">
+        <h2>Abandon Current Run?</h2>
+        <p>
+          This will discard the current run and start a new game.
+        </p>
+        <div class="popup-actions">
+          <button (click)="confirmAbandonNormalRun()">Abandon Run</button>
+          <button (click)="dismissAbandonNormalRun()">Continue Game</button>
         </div>
       </div>
     </div>

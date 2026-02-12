@@ -124,6 +124,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replayDivergedActive = false;
   replayDivergedMessage = '';
   replayDivergedPendingReset = false;
+  autoCleanupActive = false;
+  autoCleanupMessage = '';
   validateModalActive = false;
   validateInfoActive = false;
   validateInfoMessage = '';
@@ -138,6 +140,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
   confirmStopSaveActive = false;
   confirmStopSaveLabel = '';
   confirmStopSaveError = '';
+  restartConfirmActive = false;
+  modeChangeConfirmActive = false;
+  private pendingModeChange: 'normal' | 'record' | 'replay' | null = null;
+  private suppressModeChangeConfirm = false;
+  private resumeRecordAiOnContinue = false;
+  abandonNormalConfirmActive = false;
   exitRecordConfirmActive = false;
   private suppressRecordExitPrompt = false;
   private exitRecordAction: 'restore' | 'restart' = 'restore';
@@ -317,11 +325,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.promptSaveRecordingOnGameOver();
         }
         if (isOver && this.aiRunning) {
+          const wasRecord = this.spawnMode === 'record';
+          const isBatch = this.batchTotal >= 1;
+          if (isBatch && wasRecord) {
+            this.autoSaveBatchRecordRun();
+          }
           if (this.batchRemaining > 1) {
             this.stopAi('game-over');
             if (this.runIntegrityIssueDetected) {
               this.batchRemaining = this.batchTotal;
               return;
+            }
+            if (wasRecord) {
+              this.game.clearRecording();
+              this.recordingSaved = false;
+              this.spawnLabel = '';
+              this.spawnMode = 'record';
+              this.updateSpawnMode();
             }
             this.batchRemaining -= 1;
             this.clearDivergences();
@@ -336,6 +356,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.stopAi('game-over');
           this.batchRemaining = this.batchTotal;
         }
+      });
+
+    this.game.cleanupNotice$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((message) => {
+        if (!message) return;
+        this.autoCleanupMessage = message;
+        this.autoCleanupActive = true;
       });
 
     this.router.events
@@ -395,20 +423,15 @@ export class GamePageComponent implements OnInit, OnDestroy {
   restart(): void {
     if (this.spawnMode === 'record' && this.canSaveSpawns) {
       this.exitRecordAction = 'restart';
+      this.resumeRecordAiOnContinue = this.aiRunning;
       this.exitRecordConfirmActive = true;
       return;
     }
-    this.stopAi('stop');
-    this.replayStoppedEarly = false;
-    this.resetAiRunTracking();
-    this.clearDivergences();
-    this.game.startNewGame();
-    this.winFromAiRun = false;
-    this.applyDefaultAiConfig();
-    this.autoBoostStage = 0;
-    this.clearHint();
-    this.spawnMode = 'normal';
-    this.updateSpawnMode();
+    if (this.spawnMode !== 'record' && this.runInProgress) {
+      this.restartConfirmActive = true;
+      return;
+    }
+    this.performRestart();
   }
 
   undo(): void {
@@ -427,7 +450,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
   dismissGameOver(): void {
     this.gameOverDismissed = true;
     this.game.dismissGameOver();
-    this.ensureRunLoggedIfMissing('game-over', this.spawnMode);
     this.stopAi('stop');
     this.resetAiRunTrackingForNewGame();
     this.game.startNewGame();
@@ -441,6 +463,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   dismissReplayStoppedEarly(): void {
     this.replayStoppedEarly = false;
+  }
+
+  dismissAutoCleanup(): void {
+    this.autoCleanupActive = false;
+    this.autoCleanupMessage = '';
   }
 
   dismissReplayCompleted(): void {
@@ -660,7 +687,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.savedSpawns.map((entry) => entry.label.trim())
     );
     const runs = this.runHistory.getRuns();
-    const labelsToRemove = new Set<string>();
     for (const run of runs) {
       if (run.gameMode !== 'record') continue;
       const label = run.replayLabel?.trim() ?? '';
@@ -668,7 +694,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const hasSaved =
         savedLabels.has(label) || this.game.hasRecordSpawnsArchiveForLabel(label);
       if (!hasSaved) {
-        labelsToRemove.add(label);
         continue;
       }
       if (typeof run.savedId !== 'number') {
@@ -677,10 +702,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.runHistory.updateRecordSavedId(label, savedId);
         }
       }
-    }
-    if (labelsToRemove.size === 0) return;
-    for (const label of labelsToRemove) {
-      this.runHistory.deleteRunsByReplayLabel(label);
     }
   }
 
@@ -1182,6 +1203,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   updateSpawnMode(): void {
     const previousMode = this.lastSpawnMode;
+    const modeChanged = this.spawnMode !== previousMode;
     const hasUnsavedRecord =
       !this.recordingSaved &&
       (this.game.getSpawnLogLength() > 0 ||
@@ -1191,6 +1213,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (!this.suppressRecordExitPrompt) {
         this.spawnMode = 'record';
         this.exitRecordAction = 'restore';
+        this.resumeRecordAiOnContinue = this.aiRunning;
         this.exitRecordConfirmActive = true;
         this.cdr.detectChanges();
         return;
@@ -1221,10 +1244,25 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (!this.suppressRecordExitPrompt) {
         this.spawnMode = 'record';
         this.exitRecordAction = 'restore';
+        this.resumeRecordAiOnContinue = this.aiRunning;
         this.exitRecordConfirmActive = true;
         this.cdr.detectChanges();
         return;
       }
+    }
+    if (
+      modeChanged &&
+      this.game.getMoveCountSnapshot() > 0 &&
+      !this.suppressModeChangeConfirm
+    ) {
+      this.pendingModeChange = this.spawnMode;
+      this.spawnMode = previousMode;
+      this.modeChangeConfirmActive = true;
+      this.cdr.detectChanges();
+      return;
+    }
+    if (this.suppressModeChangeConfirm) {
+      this.suppressModeChangeConfirm = false;
     }
     if (this.suppressRecordExitPrompt) {
       this.suppressRecordExitPrompt = false;
@@ -1312,7 +1350,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.skipTiePauseOnce = false;
       this.resumeFromTiePause = false;
       this.recordingSaved = false;
-      this.savedSpawnsAvailable = false;
+      this.savedSpawns = this.getSortedSavedSpawns();
+      this.savedSpawnsAvailable = this.savedSpawns.length > 0;
       this.clearDivergences();
       this.resetAiRunTrackingForNewGame();
       this.game.startNewGame();
@@ -1415,18 +1454,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         .map((spawn) => spawn.label?.trim() ?? '')
         .filter((label) => label.length > 0)
     );
-    const labelsToRemove = new Set<string>();
-    for (const run of this.runHistory.getRuns()) {
-      const label = run.replayLabel?.trim();
-      if (!label) continue;
-      if (run.gameMode !== 'record' && run.gameMode !== 'replay') continue;
-      if (!savedLabels.has(label)) {
-        labelsToRemove.add(label);
-      }
-    }
-    for (const label of labelsToRemove) {
-      this.runHistory.deleteRunsByReplayLabel(label);
-    }
+    void savedLabels;
   }
 
   get hasUnsavedRecordData(): boolean {
@@ -1444,7 +1472,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   get spawnModeLocked(): boolean {
-    return this.runInProgress || this.hasUnsavedRecordData;
+    return false;
   }
 
   get restartLocked(): boolean {
@@ -1476,13 +1504,59 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.saveAndExitRecordPending = false;
   }
 
+  requestAbandonNormalRun(): void {
+    this.abandonNormalConfirmActive = true;
+  }
+
+  dismissAbandonNormalRun(): void {
+    this.abandonNormalConfirmActive = false;
+  }
+
+  confirmAbandonNormalRun(): void {
+    this.abandonNormalConfirmActive = false;
+    this.performRestart();
+  }
+
+  dismissRestartConfirm(): void {
+    this.restartConfirmActive = false;
+  }
+
+  confirmRestartRun(): void {
+    this.restartConfirmActive = false;
+    this.performRestart();
+  }
+
+  dismissModeChangeConfirm(): void {
+    this.modeChangeConfirmActive = false;
+    this.pendingModeChange = null;
+    this.spawnMode = this.lastSpawnMode;
+  }
+
+  confirmModeChangeEndRun(): void {
+    const targetMode = this.pendingModeChange ?? this.lastSpawnMode;
+    this.modeChangeConfirmActive = false;
+    this.pendingModeChange = null;
+    this.performRestartBase();
+    this.spawnMode = targetMode;
+    this.suppressModeChangeConfirm = true;
+    this.updateSpawnMode();
+  }
+
   dismissExitRecordConfirm(): void {
     this.exitRecordConfirmActive = false;
     this.exitRecordAction = 'restore';
+    this.resumeRecordAiOnContinue = false;
+  }
+
+  requestAbandonRecord(): void {
+    this.exitRecordAction = 'restore';
+    this.resumeRecordAiOnContinue = this.aiRunning;
+    this.exitRecordConfirmActive = true;
   }
 
   confirmExitRecordWithoutSaving(): void {
     this.exitRecordConfirmActive = false;
+    this.resumeRecordAiOnContinue = false;
     this.game.clearRecording();
     this.recordingSaved = false;
     if (this.exitRecordAction === 'restart') {
@@ -1527,12 +1601,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
   continueRecordRun(): void {
     this.exitRecordConfirmActive = false;
     this.spawnMode = 'record';
+    const resumeAi = this.resumeRecordAiOnContinue;
+    this.resumeRecordAiOnContinue = false;
     setTimeout(() => {
       if (this.spawnModeSelect?.nativeElement) {
         this.spawnModeSelect.nativeElement.value = 'record';
       }
       this.cdr.detectChanges();
-      if (!this.aiRunning && !this.gameOverActive) {
+      if (resumeAi && !this.aiRunning && !this.gameOverActive) {
         this.startAiLoop();
       }
     }, 0);
@@ -1714,6 +1790,44 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.stopAi('stop');
   }
 
+  private buildBatchRecordLabel(): string {
+    const score = this.game.getScoreSnapshot();
+    const maxTile = Math.max(...this.game.getBoardSnapshot().flat());
+    const base = `Batch ${new Date().toISOString()} s${score} t${maxTile}`;
+    const existing = new Set(
+      this.runHistory
+        .getRuns()
+        .filter((run) => run.gameMode === 'record')
+        .map((run) => (run.replayLabel?.trim().toLowerCase() ?? ''))
+        .filter((label) => Boolean(label))
+    );
+    if (!existing.has(base.toLowerCase())) return base;
+    let counter = 2;
+    while (existing.has(`${base} #${counter}`.toLowerCase())) {
+      counter += 1;
+    }
+    return `${base} #${counter}`;
+  }
+
+  private autoSaveBatchRecordRun(): void {
+    if (this.spawnMode !== 'record') return;
+    if (this.recordingSaved) return;
+    if (
+      this.game.getMoveLogLength() === 0 &&
+      this.game.getSpawnLogLength() === 0
+    ) {
+      return;
+    }
+    const label = this.buildBatchRecordLabel();
+    const savedEntry = this.game.saveSpawnLog(label, { archiveRecord: true });
+    this.spawnLabel = label;
+    void savedEntry;
+    this.savedSpawns = this.getSortedSavedSpawns();
+    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    this.recordingSaved = true;
+    this.spawnStatus = `Auto-saved record run (${label}).`;
+  }
+
   private logReplayDivergenceRun(
     replayLabel: string,
     moveIndex: number,
@@ -1758,7 +1872,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   private promptSaveRecordingOnGameOver(): void {
-    if (this.spawnMode !== 'record' || this.recordingSaved || !this.canSaveSpawns) {
+    if (
+      this.spawnMode !== 'record' ||
+      this.recordingSaved ||
+      !this.canSaveSpawns
+    ) {
       return;
     }
     const label = window.prompt('Label for saved spawns (required):', '');
@@ -2294,9 +2412,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
     if (reason === 'game-over') {
       const wasReplay = this.spawnMode === 'replay';
-      this.spawnMode = 'normal';
-      this.updateSpawnMode();
       if (wasReplay) {
+        this.spawnMode = 'normal';
+        this.updateSpawnMode();
         this.replayParityStatus = 'Replay completed.';
         this.replayRunMovesStatus = `Replay moves: ${this.game.getMoveCountSnapshot()}`;
       }
@@ -2525,8 +2643,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
     if (!this.aiRunLogged) {
       this.aiRunLogged = true;
+      const loggedGameMode = this.spawnMode;
+      const loggedEngine = this.getLoggedEngine(loggedGameMode);
       const savedLabel =
-        this.spawnMode === 'replay' || this.spawnMode === 'record'
+        loggedGameMode === 'replay' || loggedGameMode === 'record'
           ? this.game.getSpawnLabel()
           : '';
       const savedId = savedLabel
@@ -2538,8 +2658,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
         reason,
         maxTile,
         topTiles,
-        engine: this.aiEngine,
-        gameMode: this.spawnMode,
+        engine: loggedEngine,
+        gameMode: loggedGameMode,
         parity: this.parityMode,
         compare: this.compareEngines,
         depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
@@ -2580,12 +2700,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const runMode =
       runModeOverride ??
       (this.lastRunMode === 'replay' ? 'replay' : this.lastRunMode || this.spawnMode);
+    const loggedEngine = this.getLoggedEngine(runMode);
     const existing = this.runHistory.getRuns().find((run) => {
       if (
         run.score !== score ||
         run.moves !== movesToLog ||
         run.maxTile !== maxTile ||
-        run.engine !== this.aiEngine ||
+        run.engine !== loggedEngine ||
         run.gameMode !== runMode
       ) {
         return false;
@@ -2617,7 +2738,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       outcome: outcomeOverride,
       maxTile,
       topTiles,
-      engine: this.aiEngine,
+      engine: loggedEngine,
       gameMode: runMode,
       parity: this.parityMode,
       compare: this.compareEngines,
@@ -2629,6 +2750,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
       totalMoves,
       durationMs,
     });
+  }
+
+  private getLoggedEngine(mode: 'normal' | 'record' | 'replay'): 'ts' | 'wasm' {
+    if (mode === 'record') return 'wasm';
+    return this.aiEngine;
   }
 
   private startAiLoop(resetBoost = true, resetBatch = true): void {
@@ -2858,12 +2984,43 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.pauseAiForNav();
       return;
     }
+    this.savedSpawns = this.getSortedSavedSpawns();
+    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    if (
+      this.selectedReplayId &&
+      !this.savedSpawns.some((spawn) => spawn.id === this.selectedReplayId)
+    ) {
+      this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
+      if (this.spawnMode === 'replay' && !this.selectedReplayId) {
+        this.spawnMode = 'normal';
+        this.updateSpawnMode();
+        this.spawnStatus = 'Replay selection was removed. Switched to normal mode.';
+      }
+    }
     if (this.gameOverActive) return;
     if (this.aiRunning) return;
     if (this.aiPausedForNav) {
       this.startAiLoop(false, false);
       return;
     }
+  }
+
+  private performRestartBase(): void {
+    this.stopAi('stop');
+    this.replayStoppedEarly = false;
+    this.resetAiRunTracking();
+    this.clearDivergences();
+    this.game.startNewGame();
+    this.winFromAiRun = false;
+    this.applyDefaultAiConfig();
+    this.autoBoostStage = 0;
+    this.clearHint();
+  }
+
+  private performRestart(): void {
+    this.performRestartBase();
+    this.spawnMode = 'normal';
+    this.updateSpawnMode();
   }
 
 
