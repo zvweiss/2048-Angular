@@ -5,13 +5,24 @@
     <div class="controls">
       <div class="control-item">
         <button
-          (click)="restart()"
-          title="Restart game"
-          [disabled]="restartLocked"
+          *ngIf="spawnMode !== 'record' && runInProgress; else restartControl"
+          (click)="requestAbandonNormalRun()"
+          title="Abandon current run"
         >
-          🔄
+          ⏹
         </button>
-        <span class="control-label">Restart</span>
+        <ng-template #restartControl>
+          <button
+            (click)="restart()"
+            title="Restart game"
+            [disabled]="restartLocked"
+          >
+            🔄
+          </button>
+        </ng-template>
+        <span class="control-label">
+          {{ spawnMode !== 'record' && runInProgress ? 'Abandon' : 'Restart' }}
+        </span>
       </div>
       <div class="control-item">
         <button
@@ -240,7 +251,7 @@
               ? 'Saved spawns exist'
               : 'Saved spawns do not exist' }}
           </div>
-          <div class="ai-spawn-actions">
+          <div class="ai-spawn-actions" *ngIf="aiDebugEnabled">
             <button type="button" (click)="dumpDivergences()">Dump Divergences</button>
           </div>
         </div>
@@ -265,7 +276,7 @@
               step="1"
               [(ngModel)]="aiDepthCap"
               (input)="updateDepthCap()"
-              [disabled]="parityMode"
+              [disabled]="parityMode || spawnMode === 'replay'"
             />
           </label>
           <div class="ai-auto-boost-toggle" *ngIf="autoBoostPaused">
@@ -280,7 +291,7 @@
               step="50"
               [(ngModel)]="aiTimeBudgetMs"
               (input)="updateTsConfig()"
-              [disabled]="parityMode"
+              [disabled]="parityMode || spawnMode === 'replay'"
             />
           </label>
           <div class="ai-boost-status">
