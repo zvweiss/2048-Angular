@@ -10,7 +10,7 @@
     "build:prod": "npm run build:wasm && npx ng build --configuration production --base-href=/2048-Angular/",
     "deploy": "npm run build:prod && touch dist/2048-angular/browser/.nojekyll && npx gh-pages -d dist/2048-angular/browser --dotfiles",
     "deploy:check": "bash -lc \"set -e; curl -I https://zvweiss.github.io/2048-Angular/ | sed -n '1,5p'; curl -I https://zvweiss.github.io/2048-Angular/main.js | sed -n '1,5p'; curl -I https://zvweiss.github.io/2048-Angular/assets/workers/wasm/2048.wasm | sed -n '1,5p'\"",
-    "deploy:valet": "npx ng build --base-href=/ && rsync -a --delete dist/2048-angular/browser/ ~/Sites/2048-Angular/ && cp -f dist/2048-angular/browser/favicon.ico ~/Sites/2048-Angular/favicon.ico",
+    "deploy:valet": "npx ng build --base-href=/ && rsync -a --delete ~/tbd/2048-angular/dist/2048-angular/browser/ ~/Sites/2048-Angular/",
     "watch": "npx ng build --watch --configuration development",
     "kill-port": "kill-port 4200",
     "test": "npx ng test"

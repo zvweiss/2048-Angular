@@ -38,4 +38,4 @@ This document inventories all localStorage keys used by the app, who writes them
 ## Notes
 
 - Legacy keys (`spawnLog`, `moveLog`, `spawnLabel`, `bestScore`) are retained for migration/compatibility and should be empty in healthy state.
-- See `docs/reports/run-control/run-control-spec.md` for the functional behavior spec and the persistence section.
+- See `docs/reports/run-control/run-control-spec.md` for the functional behavior spec and the persistence section
