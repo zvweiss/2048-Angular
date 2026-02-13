@@ -53,3 +53,4 @@ Thumbs.db
 # adjust .gitignore with files I will remove  later
 /docs/Coverrsation-with chatGPT
 /docs/reports/run-control/my-run-spec.md
+/docs/devTools-snippets
