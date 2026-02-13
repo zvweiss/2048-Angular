@@ -1973,6 +1973,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const savedMoves = this.game.getMoveLogLength();
           const runMoves = this.game.getMoveCountSnapshot();
           const completedReplay = savedMoves > 0 && runMoves >= savedMoves;
+          let replayLogState: 'added' | 'existing' | 'skipped' = 'skipped';
           if (savedMoves > 0 && runMoves < savedMoves) {
             this.addDivergenceBacklog(
               replayLabel,
@@ -1981,11 +1982,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
             this.replayRunLoggedAtCompletion = true;
             this.spawnStatus = `Partial replay (not logged): ${runMoves} / ${savedMoves} moves.`;
           } else if (!this.replayRunLoggedAtCompletion) {
-            this.ensureRunLoggedIfMissing('stop', 'replay', replayLabel);
+            replayLogState = this.ensureRunLoggedIfMissing(
+              'stop',
+              'replay',
+              replayLabel
+            );
             this.replayRunLoggedAtCompletion = true;
           }
           if (completedReplay) {
-            this.replayCompletedMessage = `Replay completed: ${runMoves} / ${savedMoves} moves consumed.`;
+            this.replayCompletedMessage =
+              replayLogState === 'existing'
+                ? `Replay completed: ${runMoves} / ${savedMoves} moves consumed. This replay is already in Runs.`
+                : `Replay completed: ${runMoves} / ${savedMoves} moves consumed.`;
             this.replayCompletedActive = true;
           }
           this.lastStopOrigin = 'replay-exhausted';
@@ -2729,7 +2737,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     runModeOverride?: 'normal' | 'record' | 'replay',
     replayLabelOverride?: string,
     outcomeOverride?: string
-  ): void {
+  ): 'added' | 'existing' | 'skipped' {
     const board = this.game.getBoardSnapshot();
     const maxTile = Math.max(...board.flat());
     const topTiles = [...board.flat()].sort((a, b) => b - a).slice(0, 4);
@@ -2746,7 +2754,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         ? Date.now() - this.aiRunLastStartedAt
         : 0;
     const durationMs = this.aiRunAccumulatedMs + runningMs;
-    if (movesToLog <= 0) return;
+    if (movesToLog <= 0) return 'skipped';
 
     const runMode =
       runModeOverride ??
@@ -2767,7 +2775,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const nextLabel = (replayLabelOverride ?? this.game.getSpawnLabel()).trim();
       return existingLabel === nextLabel;
     });
-    if (existing) return;
+    if (existing) return 'existing';
 
     const savedLabel =
       runMode === 'replay' || runMode === 'record'
@@ -2779,7 +2787,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (runMode === 'replay') {
       const savedMoves = this.game.getMoveLogLength();
       if (!savedMoves || movesToLog < savedMoves) {
-        return;
+        return 'skipped';
       }
     }
     this.runHistory.addRun({
@@ -2801,6 +2809,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       totalMoves,
       durationMs,
     });
+    return 'added';
   }
 
   private getLoggedEngine(mode: 'normal' | 'record' | 'replay'): 'ts' | 'wasm' {
