@@ -2002,7 +2002,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.game.startNewGame();
           return;
         }
-        if (this.compareEngines) {
+        const replayCompareActive =
+          this.spawnMode === 'replay' &&
+          this.aiEngine === 'ts' &&
+          this.compareEngines;
+        if (replayCompareActive) {
           const tsDepthLimit = this.getTsCompareDepthLimit();
           const tsScores = this.ai.getTsScores(board, tsDepthLimit);
           const tsMove = this.getBestMoveFromScores(tsScores);
@@ -2096,8 +2100,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
               savedMoves > 0
                 ? `Replay divergence: ${moveIndex} / ${savedMoves} moves consumed.`
                 : `Replay divergence: ${moveIndex} moves consumed.`;
-            this.replayDivergedActive = true;
-            this.replayDivergedPendingReset = true;
+            if (this.batchTotal > 1) {
+              this.replayDivergedActive = false;
+              this.replayDivergedPendingReset = false;
+              this.replayDivergedMessage = '';
+              this.spawnMode = 'normal';
+              this.updateSpawnMode();
+              this.replayParityStatus = '';
+              this.replaySavedMovesStatus = '';
+              this.replayRunMovesStatus = '';
+              this.spawnStatus = '';
+              this.spawnLabel = '';
+              this.resetAiRunTrackingForNewGame();
+              this.game.startNewGame();
+            } else {
+              this.replayDivergedActive = true;
+              this.replayDivergedPendingReset = true;
+            }
             this.lastStopOrigin = 'divergence';
             this.stopAi('stop');
             return;
