@@ -423,7 +423,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   restart(): void {
     if (this.spawnMode === 'record' && this.canSaveSpawns) {
       this.exitRecordAction = 'restart';
-      this.resumeRecordAiOnContinue = this.aiRunning;
+      this.resumeRecordAiOnContinue = this.pauseAiForDecisionModal();
       this.exitRecordConfirmActive = true;
       return;
     }
@@ -463,6 +463,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   dismissReplayStoppedEarly(): void {
     this.replayStoppedEarly = false;
+  }
+
+  abandonReplayStoppedEarly(): void {
+    this.replayStoppedEarly = false;
+    this.performRestart();
   }
 
   dismissAutoCleanup(): void {
@@ -657,12 +662,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
       } else if (issue.kind === 'invalid-saved-spawn') {
         removedSpawns += this.game.deleteSavedSpawnsByLabel(issue.label);
         removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
-        removedDivergences += this.deleteDivergencesForLabel(issue.label);
+        removedDivergences += this.removeDivergenceEntriesForLabel(issue.label);
       }
     }
-    this.savedSpawns = this.getSortedSavedSpawns();
-    this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
-    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    this.refreshReplaySelectionState(
+      'Replay selection was removed. Switched to normal mode.'
+    );
     const divergencePart = removedDivergences
       ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
       : '';
@@ -969,7 +974,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
     const removedRuns = this.runHistory.deleteRunsByReplayLabel(baseLabel);
     const removedSpawns = this.game.deleteSavedSpawnsByLabel(baseLabel);
-    const removedDivergences = this.deleteDivergencesForLabel(baseLabel);
+    const removedDivergences = this.removeDivergenceEntriesForLabel(baseLabel);
+    this.refreshReplaySelectionState(
+      'Replay selection was removed. Switched to normal mode.'
+    );
     const divergencePart = removedDivergences
       ? ` and ${removedDivergences} divergence entr${removedDivergences === 1 ? 'y' : 'ies'}`
       : '';
@@ -1091,34 +1099,30 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.saveDivergenceFixed();
   }
 
-  private deleteDivergencesForLabel(label: string): number {
+  private removeDivergenceEntriesForLabel(label: string): number {
     const baseLabel = label.trim();
     if (!baseLabel) return 0;
     const refreshSeparator = this.divergenceRefreshSeparator;
     const matchesLabel = (entryLabel: string) =>
       entryLabel === baseLabel ||
       entryLabel.startsWith(`${baseLabel}${refreshSeparator}`);
-    const purgeList = (key: string): number => {
-      const raw = localStorage.getItem(key);
-      if (!raw) return 0;
-      try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return 0;
-        const before = parsed.length;
-        const filtered = parsed.filter(
-          (entry) => !matchesLabel(String(entry?.label ?? ''))
-        );
-        if (filtered.length === before) return 0;
-        localStorage.setItem(key, JSON.stringify(filtered));
-        return before - filtered.length;
-      } catch {
-        return 0;
-      }
-    };
-    return (
-      purgeList(this.divergenceBacklogKey) +
-      purgeList(this.divergenceFixedKey)
+    const backlogBefore = this.divergenceBacklog.length;
+    const fixedBefore = this.divergenceFixed.length;
+    this.divergenceBacklog = this.divergenceBacklog.filter(
+      (entry) => !matchesLabel(String(entry.label ?? '').trim())
     );
+    this.divergenceFixed = this.divergenceFixed.filter(
+      (entry) => !matchesLabel(String(entry.label ?? '').trim())
+    );
+    const removed =
+      backlogBefore -
+      this.divergenceBacklog.length +
+      (fixedBefore - this.divergenceFixed.length);
+    if (removed > 0) {
+      this.saveDivergenceBacklog();
+      this.saveDivergenceFixed();
+    }
+    return removed;
   }
 
   private resolveReplayLabel(): string {
@@ -1213,7 +1217,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (!this.suppressRecordExitPrompt) {
         this.spawnMode = 'record';
         this.exitRecordAction = 'restore';
-        this.resumeRecordAiOnContinue = this.aiRunning;
+        this.resumeRecordAiOnContinue = this.pauseAiForDecisionModal();
         this.exitRecordConfirmActive = true;
         this.cdr.detectChanges();
         return;
@@ -1244,7 +1248,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (!this.suppressRecordExitPrompt) {
         this.spawnMode = 'record';
         this.exitRecordAction = 'restore';
-        this.resumeRecordAiOnContinue = this.aiRunning;
+        this.resumeRecordAiOnContinue = this.pauseAiForDecisionModal();
         this.exitRecordConfirmActive = true;
         this.cdr.detectChanges();
         return;
@@ -1404,6 +1408,31 @@ export class GamePageComponent implements OnInit, OnDestroy {
       : 'Replay ready.';
   }
 
+  private refreshReplaySelectionState(fallbackStatus: string): void {
+    this.savedSpawns = this.getSortedSavedSpawns();
+    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
+    if (
+      this.selectedReplayId &&
+      this.savedSpawns.some((spawn) => spawn.id === this.selectedReplayId)
+    ) {
+      return;
+    }
+    this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
+    if (this.spawnMode !== 'replay' || this.selectedReplayId) return;
+    this.game.resetReplayState();
+    this.spawnMode = 'normal';
+    this.lastSpawnMode = 'normal';
+    this.game.setSpawnMode('normal');
+    this.spawnLabel = '';
+    this.replayParityStatus = 'Replay data missing. Save spawns first.';
+    this.replaySavedMovesStatus = '';
+    this.replayRunMovesStatus = '';
+    this.replayDataMissingActive = true;
+    this.replayDataMissingMessage =
+      'Replay data is missing. Select a valid recording or save spawns again.';
+    this.spawnStatus = fallbackStatus;
+  }
+
   private getSortedSavedSpawns(): SavedSpawnMeta[] {
     const divergenceLabels = this.getDivergenceLabels();
     const activeRecordLabels = new Set(
@@ -1550,7 +1579,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   requestAbandonRecord(): void {
     this.exitRecordAction = 'restore';
-    this.resumeRecordAiOnContinue = this.aiRunning;
+    this.resumeRecordAiOnContinue = this.pauseAiForDecisionModal();
     this.exitRecordConfirmActive = true;
   }
 
@@ -2984,19 +3013,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.pauseAiForNav();
       return;
     }
-    this.savedSpawns = this.getSortedSavedSpawns();
-    this.savedSpawnsAvailable = this.savedSpawns.length > 0;
-    if (
-      this.selectedReplayId &&
-      !this.savedSpawns.some((spawn) => spawn.id === this.selectedReplayId)
-    ) {
-      this.selectedReplayId = this.savedSpawns[0]?.id ?? null;
-      if (this.spawnMode === 'replay' && !this.selectedReplayId) {
-        this.spawnMode = 'normal';
-        this.updateSpawnMode();
-        this.spawnStatus = 'Replay selection was removed. Switched to normal mode.';
-      }
-    }
+    this.refreshReplaySelectionState(
+      'Replay selection was removed. Switched to normal mode.'
+    );
     if (this.gameOverActive) return;
     if (this.aiRunning) return;
     if (this.aiPausedForNav) {
@@ -3021,6 +3040,24 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.performRestartBase();
     this.spawnMode = 'normal';
     this.updateSpawnMode();
+  }
+
+  private pauseAiForDecisionModal(): boolean {
+    if (!this.aiRunning) return false;
+    this.aiRunToken++;
+    this.aiStepInFlight = false;
+    if (this.aiIntervalId !== null) {
+      clearInterval(this.aiIntervalId);
+      this.aiIntervalId = null;
+    }
+    if (this.aiRunLastStartedAt !== null) {
+      this.aiRunAccumulatedMs += Date.now() - this.aiRunLastStartedAt;
+      this.aiRunLastStartedAt = null;
+    }
+    this.aiRunAccumulatedMoves +=
+      this.game.getMoveCountSnapshot() - this.aiRunStartMoves;
+    this.aiRunning = false;
+    return true;
   }
 
 

@@ -401,7 +401,10 @@
       <div class="popup">
         <h2>⏸ Replay Stopped Early</h2>
         <p>{{ replayStoppedEarlyMessage }}</p>
-        <button (click)="dismissReplayStoppedEarly()">Dismiss</button>
+        <div class="popup-actions">
+          <button (click)="dismissReplayStoppedEarly()">Continue Replay</button>
+          <button (click)="abandonReplayStoppedEarly()">Abandon Replay</button>
+        </div>
       </div>
     </div>
 
