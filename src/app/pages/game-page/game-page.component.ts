@@ -2010,8 +2010,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const tsDepthLimit = this.getTsCompareDepthLimit();
           const tsScores = this.ai.getTsScores(board, tsDepthLimit);
           const tsMove = this.getBestMoveFromScores(tsScores);
-          const bestMoves = this.getCompareBestMoveSet(tsScores);
-          const replayTie = bestMoves.size > 1 && bestMoves.has(replayMove);
+          const bestMoves = this.getReplayCompareBestMoveSet(tsScores);
+          const replayWithinThreshold = bestMoves.has(replayMove);
+          const replayTie = bestMoves.size > 1 && replayWithinThreshold;
           if (!skipTieChecks && replayTie && this.aiComparePauseOnTie && tsMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
             const tsBest = [...bestMoves];
@@ -2034,8 +2035,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
               return;
             }
           }
-          if (!replayTie && tsMove && tsMove !== replayMove) {
-            const wasmScores = await this.ai.getWasmScores(board);
+          if (!replayWithinThreshold && tsMove && tsMove !== replayMove) {
+            const wasmScores = this.aiDebugEnabled
+              ? await this.ai.getWasmScores(board)
+              : undefined;
             this.replayParityStatus = `Replay parity mismatch at move ${this.game.getMoveCountSnapshot()}`;
             if (this.aiDebugEnabled) {
               console.log(
@@ -2499,7 +2502,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   private getBestMoveSet(
     scores: { direction: Direction; score: number }[],
-    quantizeStep?: number
+    quantizeStep?: number,
+    epsilonFloor = 1
   ): Set<Direction> {
     const bestMoves = new Set<Direction>();
     if (!scores.length) return bestMoves;
@@ -2510,7 +2514,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const value = quantize(entry.score);
       if (value > bestScore) bestScore = value;
     }
-    const epsilon = Math.max(1, Math.abs(bestScore) * 1e-6);
+    const epsilon = Math.max(epsilonFloor, Math.abs(bestScore) * 1e-6);
     for (const entry of scores) {
       const value = quantize(entry.score);
       if (bestScore - value <= epsilon) {
@@ -2524,6 +2528,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     scores: { direction: Direction; score: number }[]
   ): Set<Direction> {
     return this.getBestMoveSet(scores, 1);
+  }
+
+  private getReplayCompareBestMoveSet(
+    scores: { direction: Direction; score: number }[]
+  ): Set<Direction> {
+    return this.getBestMoveSet(scores, 1, 8);
   }
 
   private tryBoostedMove(board: Board, initialMove: Direction): Direction | null {

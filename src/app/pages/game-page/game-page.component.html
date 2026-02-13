@@ -413,7 +413,10 @@
       <div class="popup">
         <h2>‼️ Replay Diverged</h2>
         <p>{{ replayDivergedMessage }}</p>
-        <button (click)="dismissReplayDiverged()">Dismiss</button>
+        <div class="popup-actions">
+          <button (click)="copyDivergenceSnapshot()">Copy Backlog Block</button>
+          <button (click)="dismissReplayDiverged()">Dismiss</button>
+        </div>
       </div>
     </div>
 
