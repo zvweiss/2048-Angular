@@ -16,7 +16,7 @@
       <div class="control-item">
         <button
           (click)="toggleAiRun()"
-          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || aiCompareEnabled"
+          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive"
           [title]="aiRunning ? 'Stop AI' : 'Run AI'"
         >
           {{ aiRunning ? '🔴' : '🟢' }}
@@ -405,15 +405,6 @@
           <button (click)="dismissReplayStoppedEarly()">Continue Replay</button>
           <button (click)="abandonReplayStoppedEarly()">Abandon Replay</button>
         </div>
-      </div>
-    </div>
-
-    <!-- AUTO CLEANUP NOTICE -->
-    <div class="overlay" *ngIf="autoCleanupActive">
-      <div class="popup">
-        <h2>⚠️ Data Integrity Notice</h2>
-        <p>{{ autoCleanupMessage }}</p>
-        <button (click)="dismissAutoCleanup()">Dismiss</button>
       </div>
     </div>
 

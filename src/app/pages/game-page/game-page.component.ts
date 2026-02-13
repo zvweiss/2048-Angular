@@ -124,8 +124,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replayDivergedActive = false;
   replayDivergedMessage = '';
   replayDivergedPendingReset = false;
-  autoCleanupActive = false;
-  autoCleanupMessage = '';
   validateModalActive = false;
   validateInfoActive = false;
   validateInfoMessage = '';
@@ -362,8 +360,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((message) => {
         if (!message) return;
-        this.autoCleanupMessage = message;
-        this.autoCleanupActive = true;
+        this.spawnStatus = message;
+        console.warn(message);
       });
 
     this.router.events
@@ -468,11 +466,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
   abandonReplayStoppedEarly(): void {
     this.replayStoppedEarly = false;
     this.performRestart();
-  }
-
-  dismissAutoCleanup(): void {
-    this.autoCleanupActive = false;
-    this.autoCleanupMessage = '';
   }
 
   dismissReplayCompleted(): void {
