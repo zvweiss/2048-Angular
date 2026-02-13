@@ -96,6 +96,10 @@ This document describes the run-control state/flow at a functional level (not co
 - Record runs in batch mode auto‑save on game over using an auto‑generated replay label.
 - This applies to any batch size, including single‑run batches, to avoid manual prompts.
 
+## Deferred Alignment Items
+- **Medium**: Outcomes shown in Runs table include additional values beyond the current spec examples. Decision deferred: keep current runtime values and revisit table wording later.
+- **Low**: Save Spawns enablement check is broader in implementation than strict spec wording. Decision deferred: keep current safety behavior and revisit wording/rules later.
+
 ## Persistence Spec (LocalStorage)
 
 This section ties persisted data to the functional behavior described above.
