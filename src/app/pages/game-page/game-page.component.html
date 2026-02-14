@@ -195,6 +195,16 @@
               (change)="updateAiCompare()"
             />
           </label>
+          <label
+            class="ai-speed"
+            *ngIf="aiEngine !== 'wasm' && spawnMode === 'replay' && aiCompareEnabled"
+          >
+            Strict Parity
+            <input
+              type="checkbox"
+              [(ngModel)]="strictParityMode"
+            />
+          </label>
           <label class="ai-speed" *ngIf="aiEngine !== 'wasm'">
             Parity Mode
             <input
@@ -426,7 +436,8 @@
         <p>{{ replayDivergedMessage }}</p>
         <div class="popup-actions">
           <button (click)="copyDivergenceSnapshot()">Copy Backlog Block</button>
-          <button (click)="dismissReplayDiverged()">Dismiss</button>
+          <button (click)="replayAgainAfterDivergence()">Replay Again</button>
+          <button (click)="dismissReplayDiverged()">Close</button>
         </div>
       </div>
     </div>

@@ -187,6 +187,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   aiComparePauseOnTie = false;
   aiDebugEnabled = false;
   parityMode = true;
+  strictParityMode = true;
   @ViewChild('aiSettings') aiSettings?: ElementRef<HTMLDetailsElement>;
   @ViewChild('spawnModeSelect') spawnModeSelect?: ElementRef<HTMLSelectElement>;
 
@@ -805,8 +806,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   updateAiCompare(): void {
+    const wasCompareEnabled = this.compareEngines;
     if (!this.aiCompareEnabled) {
       this.aiComparePause = false;
+    } else if (
+      !wasCompareEnabled &&
+      this.aiEngine === 'ts' &&
+      this.spawnMode === 'replay'
+    ) {
+      // Replay compare defaults to strict parity unless user opts out.
+      this.strictParityMode = true;
     }
     this.compareEngines = this.aiCompareEnabled;
     this.pauseOnDivergence = this.aiComparePause;
@@ -1007,6 +1016,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
       };
       const tsScores = formatScores(payload.tsScores);
       const wasmScores = formatScores(payload.wasmScores);
+      const tsDelta =
+        typeof payload.tsReplayScoreDelta === 'number'
+          ? payload.tsReplayScoreDelta.toFixed(6)
+          : '';
+      const wasmDelta =
+        typeof payload.wasmReplayScoreDelta === 'number'
+          ? payload.wasmReplayScoreDelta.toFixed(6)
+          : '';
+      const tsBreakdown = payload.tsCurrentBreakdown
+        ? JSON.stringify(payload.tsCurrentBreakdown)
+        : '';
+      const tsPostBreakdowns = payload.tsPostMoveBreakdowns
+        ? JSON.stringify(payload.tsPostMoveBreakdowns)
+        : '';
       const mdBlock = [
         '---',
         `Label: ${payload.label}`,
@@ -1015,14 +1038,21 @@ export class GamePageComponent implements OnInit, OnDestroy {
         `Move: ${payload.move ?? ''}`,
         `TS move: ${payload.tsMove ?? ''}`,
         `TS scores: ${tsScores}`,
+        `TS delta (tsMove - replayMove): ${tsDelta}`,
         `WASM move: ${payload.wasmMove ?? ''}`,
         `WASM scores: ${wasmScores}`,
+        `WASM delta (tsMove - replayMove): ${wasmDelta}`,
+        `TS breakdown: ${tsBreakdown}`,
+        `TS breakdowns (post-move): ${tsPostBreakdowns}`,
         'Board:',
         board,
         '---',
       ].join('\n');
       await navigator.clipboard.writeText(mdBlock);
       this.spawnStatus = 'Divergence backlog entry copied to clipboard.';
+      if (this.replayDivergedActive) {
+        this.dismissReplayDiverged();
+      }
     } catch {
       this.spawnStatus = 'Failed to copy divergence snapshot.';
     }
@@ -1322,13 +1352,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.recordingSaved = true;
       this.savedSpawnsAvailable = this.savedSpawns.length > 0;
       if (this.aiEngine === 'ts') {
-        this.aiCompareEnabled = false;
+        this.aiCompareEnabled = true;
         this.aiComparePause = false;
         this.aiComparePauseOnTie = false;
-        this.compareEngines = false;
+        this.compareEngines = true;
         this.pauseOnDivergence = false;
         this.parityMode = true;
         this.updateParityMode();
+        this.updateAiCompare();
       }
       this.clearDivergences();
       this.resetAiRunTrackingForNewGame();
@@ -2017,9 +2048,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (replayCompareActive) {
           const tsDepthLimit = this.getTsCompareDepthLimit();
           const tsScores = this.ai.getTsScores(board, tsDepthLimit);
-          const tsMove = this.getBestMoveFromScores(tsScores);
+          const tsMove = this.getBestMoveFromScores(
+            tsScores,
+            this.strictParityMode ? 0 : undefined
+          );
           const bestMoves = this.getReplayCompareBestMoveSet(tsScores);
+          const strictReplayMatch = Boolean(tsMove && tsMove === replayMove);
           const replayWithinThreshold = bestMoves.has(replayMove);
+          const replayMatch = this.strictParityMode
+            ? strictReplayMatch
+            : replayWithinThreshold;
           const replayTie = bestMoves.size > 1 && replayWithinThreshold;
           if (!skipTieChecks && replayTie && this.aiComparePauseOnTie && tsMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
@@ -2043,11 +2081,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
               return;
             }
           }
-          if (!replayWithinThreshold && tsMove && tsMove !== replayMove) {
-            const wasmScores = this.aiDebugEnabled
-              ? await this.ai.getWasmScores(board)
-              : undefined;
-            this.replayParityStatus = `Replay parity mismatch at move ${this.game.getMoveCountSnapshot()}`;
+          if (!replayMatch && tsMove && tsMove !== replayMove) {
+            const moveIndex = this.game.getMoveCountSnapshot();
+            if (moveIndex === 1) {
+              this.replayParityStatus =
+                'Replay parity mismatch at move 1 ignored (bootstrap policy).';
+            } else {
+            const wasmScores = await this.ai.getWasmScores(board);
+            const tsScoreMap = this.toScoreMap(tsScores);
+            const wasmScoreMap = this.toScoreMap(wasmScores);
+            const tsCurrentBreakdown = computeHeuristicBreakdown(board);
+            const tsPostMoveBreakdowns = this.computeTsPostMoveBreakdowns(board);
+            this.replayParityStatus = `Replay parity mismatch at move ${moveIndex}`;
             if (this.aiDebugEnabled) {
               console.log(
                 'Replay parity mismatch:\n' +
@@ -2059,24 +2104,25 @@ export class GamePageComponent implements OnInit, OnDestroy {
                 board.map((row) => row.slice())
               );
               console.log('Replay mismatch row integers:', boardToRows(board));
-              console.log('TS heuristic breakdown:', computeHeuristicBreakdown(board));
-              const rows = boardToRows(board);
-              const directions: Direction[] = ['up', 'down', 'left', 'right'];
-              const perMove: Record<string, ReturnType<typeof computeHeuristicBreakdown>> =
-                {};
-              for (const dir of directions) {
-                const move = applyMove(rows, dir);
-                if (!move.moved) continue;
-                const nextBoard = rowsToGrid(move.rows);
-                perMove[dir] = computeHeuristicBreakdown(nextBoard);
-              }
-              console.log('TS heuristic breakdowns (post-move):', perMove);
+              console.log('TS heuristic breakdown:', tsCurrentBreakdown);
+              console.log('TS heuristic breakdowns (post-move):', tsPostMoveBreakdowns);
             }
             const snapshot = {
               move: this.game.getMoveCountSnapshot(),
               board,
               tsScores,
               wasmScores,
+              tsScoreMap,
+              wasmScoreMap,
+              tsCurrentBreakdown,
+              tsPostMoveBreakdowns,
+              tsReplayScoreDelta:
+                (tsScoreMap?.[tsMove] ?? NaN) -
+                (tsScoreMap?.[replayMove] ?? NaN),
+              wasmReplayScoreDelta:
+                wasmScoreMap && tsMove in wasmScoreMap && replayMove in wasmScoreMap
+                  ? wasmScoreMap[tsMove] - wasmScoreMap[replayMove]
+                  : undefined,
               tsMove,
               wasmMove: replayMove,
               tie: replayTie,
@@ -2089,7 +2135,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
             if (this.aiDebugEnabled) {
               console.log('Saved divergence snapshot to localStorage (aiDivergences).');
             }
-            const moveIndex = this.game.getMoveCountSnapshot();
             this.divergenceStatus = `Replay divergence at move ${moveIndex}.`;
             this.divergenceDetails = `Replay=${replayMove ?? 'null'} | TS=${tsMove ?? 'null'}`;
             if (this.autoSaveDivergenceEnabled) {
@@ -2111,26 +2156,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
               savedMoves > 0
                 ? `Replay divergence: ${moveIndex} / ${savedMoves} moves consumed.`
                 : `Replay divergence: ${moveIndex} moves consumed.`;
-            if (this.batchTotal > 1) {
-              this.replayDivergedActive = false;
-              this.replayDivergedPendingReset = false;
-              this.replayDivergedMessage = '';
-              this.spawnMode = 'normal';
-              this.updateSpawnMode();
-              this.replayParityStatus = '';
-              this.replaySavedMovesStatus = '';
-              this.replayRunMovesStatus = '';
-              this.spawnStatus = '';
-              this.spawnLabel = '';
-              this.resetAiRunTrackingForNewGame();
-              this.game.startNewGame();
-            } else {
-              this.replayDivergedActive = true;
-              this.replayDivergedPendingReset = true;
-            }
+            this.spawnStatus = this.replayDivergedMessage;
             this.lastStopOrigin = 'divergence';
             this.stopAi('stop');
             return;
+            }
         }
         }
         this.game.move(replayMove);
@@ -2490,14 +2520,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   private getBestMoveFromScores(
-    scores: { direction: Direction; score: number }[]
+    scores: { direction: Direction; score: number }[],
+    epsilonFloor = 1
   ): Direction | null {
     if (!scores.length) return null;
     let bestScore = -Infinity;
     for (const entry of scores) {
       if (entry.score > bestScore) bestScore = entry.score;
     }
-    const epsilon = Math.max(1, Math.abs(bestScore) * 1e-6);
+    const epsilon =
+      epsilonFloor <= 0 ? 0 : Math.max(epsilonFloor, Math.abs(bestScore) * 1e-6);
     const tieOrder: Direction[] = ['up', 'down', 'left', 'right'];
     for (const direction of tieOrder) {
       const entry = scores.find((item) => item.direction === direction);
@@ -2542,6 +2574,31 @@ export class GamePageComponent implements OnInit, OnDestroy {
     scores: { direction: Direction; score: number }[]
   ): Set<Direction> {
     return this.getBestMoveSet(scores, 1, 8);
+  }
+
+  private toScoreMap(
+    scores?: { direction: Direction; score: number }[]
+  ): Record<string, number> | undefined {
+    if (!scores?.length) return undefined;
+    return Object.fromEntries(
+      scores.map((entry) => [entry.direction, Number(entry.score)])
+    );
+  }
+
+  private computeTsPostMoveBreakdowns(
+    board: Board
+  ): Record<string, ReturnType<typeof computeHeuristicBreakdown>> {
+    const directions: Direction[] = ['up', 'down', 'left', 'right'];
+    const perMove: Record<string, ReturnType<typeof computeHeuristicBreakdown>> =
+      {};
+    for (const dir of directions) {
+      const rows = boardToRows(board);
+      const move = applyMove(rows, dir);
+      if (!move.moved) continue;
+      const nextBoard = rowsToGrid(move.rows);
+      perMove[dir] = computeHeuristicBreakdown(nextBoard);
+    }
+    return perMove;
   }
 
   private tryBoostedMove(board: Board, initialMove: Direction): Direction | null {
@@ -2894,17 +2951,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.replayDivergedMessage = '';
     this.divergenceStatus = '';
     this.divergenceDetails = '';
+  }
+
+  replayAgainAfterDivergence(): void {
+    this.replayDivergedActive = false;
+    this.replayDivergedMessage = '';
+    this.divergenceStatus = '';
+    this.divergenceDetails = '';
     if (this.replayDivergedPendingReset) {
       this.replayDivergedPendingReset = false;
-      this.spawnMode = 'normal';
+      this.spawnMode = 'replay';
+      this.suppressModeChangeConfirm = true;
       this.updateSpawnMode();
-      this.replayParityStatus = '';
-      this.replaySavedMovesStatus = '';
-      this.replayRunMovesStatus = '';
-      this.spawnStatus = '';
-      this.spawnLabel = '';
-      this.resetAiRunTrackingForNewGame();
-      this.game.startNewGame();
     }
   }
 
