@@ -143,6 +143,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   restartConfirmActive = false;
   modeChangeConfirmActive = false;
   private pendingModeChange: 'normal' | 'record' | 'replay' | null = null;
+  private resumeModeChangeAiOnContinue = false;
   private suppressModeChangeConfirm = false;
   private resumeRecordAiOnContinue = false;
   abandonNormalConfirmActive = false;
@@ -313,17 +314,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
               const replayLabel = this.spawnLabel || this.game.getSpawnLabel();
               const savedMoves = this.game.getMoveLogLength();
               const runMoves = this.game.getMoveCountSnapshot();
-          if (savedMoves > 0 && runMoves < savedMoves) {
-            this.addDivergenceBacklog(
-              replayLabel,
-              `Partial replay: ${runMoves} / ${savedMoves} moves`
-            );
-            this.replayRunLoggedAtCompletion = true;
-            this.spawnStatus = `Partial replay (not logged): ${runMoves} / ${savedMoves} moves.`;
-          } else {
-            this.ensureRunLoggedIfMissing('game-over', 'replay', replayLabel);
-            this.replayRunLoggedAtCompletion = true;
-          }
+              if (this.shouldTrackPartialReplay(runMoves, savedMoves)) {
+                this.addDivergenceBacklog(
+                  replayLabel,
+                  `Partial replay: ${runMoves} / ${savedMoves} moves`
+                );
+                this.replayRunLoggedAtCompletion = true;
+                this.spawnStatus = `Partial replay (not logged): ${runMoves} / ${savedMoves} moves.`;
+              } else if (savedMoves > 0 && runMoves < savedMoves) {
+                this.replayRunLoggedAtCompletion = true;
+                this.spawnStatus = `Replay ended too early (${runMoves} / ${savedMoves}); backlog entry skipped.`;
+              } else {
+                this.ensureRunLoggedIfMissing('game-over', 'replay', replayLabel);
+                this.replayRunLoggedAtCompletion = true;
+              }
             }
           } else if (!this.aiRunning) {
             this.ensureRunLoggedIfMissing('game-over');
@@ -661,9 +665,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
           );
         }
       } else if (issue.kind === 'invalid-saved-spawn') {
-        removedSpawns += this.game.deleteSavedSpawnsByLabel(issue.label);
-        removedRuns += this.runHistory.deleteRunsByReplayLabel(issue.label);
-        removedDivergences += this.removeDivergenceEntriesForLabel(issue.label);
+        this.addDivergenceBacklog(
+          issue.label,
+          'Validate blocked auto-delete for safety. Delete manually if truly intended.'
+        );
+        continue;
       }
     }
     this.refreshReplaySelectionState(
@@ -739,6 +745,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.replayDataMissingMessage =
         'Replay data is missing. Select a valid recording or save spawns again.';
       return;
+    }
+    if (this.spawnMode === 'replay') {
+      // Always reload the selected replay before starting so replay cursor starts
+      // from move 0 and cannot inherit an exhausted state.
+      const replayId = this.selectedReplayId;
+      if (!replayId || !this.game.loadSavedSpawn(replayId)) {
+        this.replayDataMissingActive = true;
+        this.replayDataMissingMessage =
+          'Replay data is missing. Select a valid recording or save spawns again.';
+        return;
+      }
+      this.spawnLabel = this.game.getSpawnLabel();
+      this.replaySavedMovesStatus = `Saved moves: ${this.game.getMoveLogLength()}`;
+      this.refreshReplayUi(true);
+      this.spawnStatus = this.spawnLabel
+        ? `Replay ready (${this.spawnLabel}).`
+        : 'Replay ready.';
     }
     this.startAiLoop();
   }
@@ -974,6 +997,19 @@ export class GamePageComponent implements OnInit, OnDestroy {
       if (removedRuns > 0) {
         this.spawnStatus = `Cleared ${removedRuns} replay run${removedRuns === 1 ? '' : 's'} for ${baseLabel}.`;
       }
+      this.dismissBacklogDeleteConfirm();
+      return;
+    }
+    const confirmText = `DELETE ${baseLabel}`;
+    const typed = window.prompt(
+      `Type exactly:\n${confirmText}\n\nto confirm permanent deletion.`
+    );
+    if (typed === null) {
+      this.dismissBacklogDeleteConfirm();
+      return;
+    }
+    if (typed.trim() !== confirmText) {
+      this.spawnStatus = 'Deletion cancelled: confirmation text did not match.';
       this.dismissBacklogDeleteConfirm();
       return;
     }
@@ -1368,6 +1404,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return match?.label ?? '';
   }
 
+  private shouldTrackPartialReplay(runMoves: number, savedMoves: number): boolean {
+    // Ignore 0/1-move partials; they are usually replay-init noise, not useful divergence.
+    return savedMoves > 0 && runMoves >= 2 && runMoves < savedMoves;
+  }
+
   private startReplayFromSavedSpawn(id: string): void {
     this.stopAi('stop');
     this.replayStoppedEarly = false;
@@ -1412,9 +1453,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.resumeFromTiePause = false;
     this.recordingSaved = true;
     this.savedSpawnsAvailable = true;
-    if (this.aiEngine === 'ts' && !this.aiCompareEnabled) {
-      this.aiCompareEnabled = true;
-      this.aiComparePause = true;
+    if (this.aiEngine === 'ts') {
+      // Safety default while stabilizing replay startup: start replay with compare OFF.
+      this.aiCompareEnabled = false;
+      this.aiComparePause = false;
       this.aiComparePauseOnTie = false;
       this.updateAiCompare();
     }
@@ -1490,10 +1532,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (
       modeChanged &&
       this.game.getMoveCountSnapshot() > 0 &&
+      !this.gameOverActive &&
       !this.suppressModeChangeConfirm
     ) {
       this.pendingModeChange = this.spawnMode;
       this.spawnMode = previousMode;
+      this.resumeModeChangeAiOnContinue = this.pauseAiForDecisionModal();
       this.modeChangeConfirmActive = true;
       this.cdr.detectChanges();
       return;
@@ -1562,10 +1606,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.recordingSaved = true;
       this.savedSpawnsAvailable = this.savedSpawns.length > 0;
       if (this.aiEngine === 'ts') {
-        this.aiCompareEnabled = true;
+        // Safety default while stabilizing replay startup: start replay with compare OFF.
+        this.aiCompareEnabled = false;
         this.aiComparePause = false;
         this.aiComparePauseOnTie = false;
-        this.compareEngines = true;
+        this.compareEngines = false;
         this.pauseOnDivergence = false;
         this.parityMode = true;
         this.updateParityMode();
@@ -1735,8 +1780,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return !this.gameOverActive && (this.aiRunning || this.game.getMoveCountSnapshot() > 0);
   }
 
+  get replayRunActive(): boolean {
+    return this.spawnMode === 'replay' && this.runInProgress;
+  }
+
   get spawnModeLocked(): boolean {
-    return false;
+    return this.replayRunActive;
+  }
+
+  get engineLocked(): boolean {
+    return this.replayRunActive;
+  }
+
+  get replaySelectionLocked(): boolean {
+    return this.replayRunActive;
   }
 
   get restartLocked(): boolean {
@@ -1794,12 +1851,18 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.modeChangeConfirmActive = false;
     this.pendingModeChange = null;
     this.spawnMode = this.lastSpawnMode;
+    const resumeAi = this.resumeModeChangeAiOnContinue;
+    this.resumeModeChangeAiOnContinue = false;
+    if (resumeAi && !this.aiRunning && !this.gameOverActive) {
+      setTimeout(() => this.startAiLoop(false, false), 0);
+    }
   }
 
   confirmModeChangeEndRun(): void {
     const targetMode = this.pendingModeChange ?? this.lastSpawnMode;
     this.modeChangeConfirmActive = false;
     this.pendingModeChange = null;
+    this.resumeModeChangeAiOnContinue = false;
     this.performRestartBase();
     this.spawnMode = targetMode;
     this.suppressModeChangeConfirm = true;
@@ -2216,13 +2279,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const runMoves = this.game.getMoveCountSnapshot();
           const completedReplay = savedMoves > 0 && runMoves >= savedMoves;
           let replayLogState: 'added' | 'existing' | 'skipped' = 'skipped';
-          if (savedMoves > 0 && runMoves < savedMoves) {
+          if (this.shouldTrackPartialReplay(runMoves, savedMoves)) {
             this.addDivergenceBacklog(
               replayLabel,
               `Partial replay: ${runMoves} / ${savedMoves} moves`
             );
             this.replayRunLoggedAtCompletion = true;
             this.spawnStatus = `Partial replay (not logged): ${runMoves} / ${savedMoves} moves.`;
+          } else if (savedMoves > 0 && runMoves < savedMoves) {
+            this.replayRunLoggedAtCompletion = true;
+            this.spawnStatus = `Replay ended too early (${runMoves} / ${savedMoves}); backlog entry skipped.`;
           } else if (!this.replayRunLoggedAtCompletion) {
             replayLogState = this.ensureRunLoggedIfMissing(
               'stop',

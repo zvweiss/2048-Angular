@@ -265,6 +265,15 @@ export class RunHistoryComponent implements OnInit {
       `Delete all runs, saved spawns, and divergence entries for label \"${label}\"? This cannot be undone.`
     );
     if (!ok) return;
+    const confirmText = `DELETE ${label}`;
+    const typed = window.prompt(
+      `Type exactly:\n${confirmText}\n\nto confirm permanent deletion.`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== confirmText) {
+      window.alert('Deletion cancelled: confirmation text did not match.');
+      return;
+    }
     const removedRuns = this.history.deleteRunsByReplayLabel(label);
     const removedSpawns = this.game.deleteSavedSpawnsByLabel(label);
     const removedDivergences = this.deleteDivergencesForLabel(label);

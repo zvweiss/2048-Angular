@@ -151,7 +151,11 @@
       <summary class="collapse-summary">AI Settings</summary>
         <label class="ai-speed">
           Engine ({{ aiEngine === 'wasm' ? 'WASM' : 'TS' }})
-          <select [(ngModel)]="aiEngine" (change)="updateAiEngine()">
+          <select
+            [(ngModel)]="aiEngine"
+            (change)="updateAiEngine()"
+            [disabled]="engineLocked"
+          >
             <option value="wasm">WASM</option>
             <option value="ts">TS</option>
           </select>
@@ -192,6 +196,7 @@
             <select
               [(ngModel)]="selectedReplayId"
               (ngModelChange)="onReplaySelectionChange($any($event))"
+              [disabled]="replaySelectionLocked"
             >
               <option *ngFor="let spawn of savedSpawns" [ngValue]="spawn.id">
                 {{ getReplayLabel(spawn) }}
