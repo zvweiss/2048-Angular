@@ -2,6 +2,12 @@
 
 Use this file to restart context quickly when a chat thread ends.
 
+## Working Agreement
+- Discuss first, implement only after explicit `go ahead`.
+- No code changes, commits, or destructive/data-affecting actions without explicit approval.
+- Brief status checks are encouraged (for example: "good commit point"), but they are not approval to act.
+- If scope is ambiguous, stop and ask one clarifying question before changing anything.
+
 ## Current Goal
 - Stabilize replay/record workflow and continue parity tightening against WASM baseline.
 
