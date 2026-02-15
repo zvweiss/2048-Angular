@@ -117,17 +117,19 @@ export function computeBitboardAiJsScores(
 
 export function computeBitboardCppScores(
   board: Board,
-  depthLimit?: number
+  depthLimit?: number,
+  options: { useCache?: boolean } = {}
 ): AiJsScore[] {
   ensureTables();
   const rows = boardToRows(board);
   const limit = depthLimit ?? Math.max(3, countDistinctExps(rows) - 2);
+  const useCache = options.useCache ?? true;
   const directions: Direction[] = ['up', 'down', 'left', 'right'];
   const scores: AiJsScore[] = [];
   for (const direction of directions) {
     const move = applyMove(rows, direction);
     if (!move.moved) continue;
-    const state = createEvalState(limit);
+    const state = createEvalState(limit, 0, useCache);
     const score = scoreTilechooseNode(state, move.rows, 1.0);
     scores.push({ direction, score });
   }
@@ -145,7 +147,7 @@ export function computeBestMoveBitboardAiJs(
   const rng = options.rng ?? Math.random;
   const timeBudgetMs = options.timeBudgetMs ?? 250;
   const start = Date.now();
-  const deadline = start + timeBudgetMs;
+  const deadline = timeBudgetMs <= 0 ? Infinity : start + timeBudgetMs;
 
   let bestScore = -Infinity;
   let bestMoves: Direction[] = [];
@@ -485,6 +487,7 @@ type TransTableEntry = {
 
 type EvalState = {
   transTable: Map<bigint, TransTableEntry>;
+  useCache: boolean;
   maxDepth: number;
   curDepth: number;
   cacheHits: number;
@@ -497,11 +500,16 @@ const CPROB_THRESH_BASE = 0.0001;
 const CACHE_DEPTH_LIMIT = 15;
 const f32 = Math.fround;
 
-function createEvalState(depthLimit: number, timeBudgetMs = 0): EvalState {
+function createEvalState(
+  depthLimit: number,
+  timeBudgetMs = 0,
+  useCache = true
+): EvalState {
   const deadline =
     timeBudgetMs > 0 ? Date.now() + Math.max(1, timeBudgetMs) : Infinity;
   return {
     transTable: new Map(),
+    useCache,
     maxDepth: 0,
     curDepth: 0,
     cacheHits: 0,
@@ -530,7 +538,7 @@ function scoreTilechooseNode(state: EvalState, rows: number[], cprob: number): n
     return f32(scoreHeurBoard(rows));
   }
 
-  if (state.curDepth < CACHE_DEPTH_LIMIT) {
+  if (state.useCache && state.curDepth < CACHE_DEPTH_LIMIT) {
     const key = packRows(rows);
     const entry = state.transTable.get(key);
     if (entry && entry.depth <= state.curDepth) {
@@ -553,7 +561,7 @@ function scoreTilechooseNode(state: EvalState, rows: number[], cprob: number): n
   }
   res = f32(res / numOpen);
 
-  if (state.curDepth < CACHE_DEPTH_LIMIT) {
+  if (state.useCache && state.curDepth < CACHE_DEPTH_LIMIT) {
     const key = packRows(rows);
     state.transTable.set(key, { depth: state.curDepth, heuristic: f32(res) });
   }

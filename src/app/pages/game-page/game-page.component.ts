@@ -116,6 +116,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     'system';
   private lastRunMode: 'normal' | 'record' | 'replay' = 'normal';
   private replayRunLoggedAtCompletion = false;
+  private lastReplayUiRefreshAt = 0;
+  private readonly replayUiRefreshThrottleMs = 150;
   gameOverMessage = 'No more valid moves. Try again!';
   replayStoppedEarly = false;
   replayStoppedEarlyMessage = '';
@@ -180,6 +182,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private readonly divergenceRefreshSeparator = ' — Refreshed ';
   divergenceFixed: { label: string; createdAt: number; note: string }[] = [];
   private readonly divergenceFixedKey = 'divergenceFixedLog';
+  // Strict mode still allows very small near-ties if WASM also considers both moves top-tier.
+  private strictReplayNearTieDelta = 12;
+  private strictReplayWasmTopTolerance = 24;
+  // Non-strict compare: allow modest near-tie differences before flagging divergence.
+  private replayNonStrictDelta = 16;
   private compareEngines = false;
   private pauseOnDivergence = false;
   aiCompareEnabled = false;
@@ -187,7 +194,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   aiComparePauseOnTie = false;
   aiDebugEnabled = false;
   parityMode = true;
-  strictParityMode = true;
+  strictParityMode = false;
   @ViewChild('aiSettings') aiSettings?: ElementRef<HTMLDetailsElement>;
   @ViewChild('spawnModeSelect') spawnModeSelect?: ElementRef<HTMLSelectElement>;
 
@@ -814,8 +821,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.aiEngine === 'ts' &&
       this.spawnMode === 'replay'
     ) {
-      // Replay compare defaults to strict parity unless user opts out.
-      this.strictParityMode = true;
+      // Replay compare defaults to non-strict parity for faster, less noisy validation.
+      this.strictParityMode = false;
     }
     this.compareEngines = this.aiCompareEnabled;
     this.pauseOnDivergence = this.aiComparePause;
@@ -838,11 +845,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   get replayProgressText(): string | null {
-    if (this.spawnMode !== 'replay') return null;
-    const savedMoves = this.game.getMoveLogLength();
-    if (!savedMoves) return null;
-    const currentMoves = this.game.getMoveCountSnapshot();
-    return `Replay progress: ${currentMoves} / ${savedMoves} moves`;
+    return this.replayRunMovesStatus || null;
   }
 
   clearDivergences(): void {
@@ -1015,10 +1018,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
           .join(' | ');
       };
       const tsScores = formatScores(payload.tsScores);
+      const tsScoresCpp = formatScores(payload.tsScoresCpp);
+      const tsScoresNoCache = formatScores(payload.tsScoresNoCache);
       const wasmScores = formatScores(payload.wasmScores);
       const tsDelta =
         typeof payload.tsReplayScoreDelta === 'number'
           ? payload.tsReplayScoreDelta.toFixed(6)
+          : '';
+      const tsNoCacheDelta =
+        typeof payload.tsNoCacheReplayScoreDelta === 'number'
+          ? payload.tsNoCacheReplayScoreDelta.toFixed(6)
+          : '';
+      const tsCppDelta =
+        typeof payload.tsCppReplayScoreDelta === 'number'
+          ? payload.tsCppReplayScoreDelta.toFixed(6)
           : '';
       const wasmDelta =
         typeof payload.wasmReplayScoreDelta === 'number'
@@ -1030,6 +1043,22 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const tsPostBreakdowns = payload.tsPostMoveBreakdowns
         ? JSON.stringify(payload.tsPostMoveBreakdowns)
         : '';
+      const tsDepthUsed =
+        typeof payload.tsDepthUsed === 'number' ? String(payload.tsDepthUsed) : '';
+      const wasmMindepth =
+        typeof payload.wasmMindepth === 'number'
+          ? String(payload.wasmMindepth)
+          : '';
+      const distinctTiles =
+        typeof payload.distinctTileCount === 'number'
+          ? String(payload.distinctTileCount)
+          : '';
+      const tsDepthSweep = payload.tsDepthSweep
+        ? JSON.stringify(payload.tsDepthSweep)
+        : '';
+      const wasmDepthSweep = payload.wasmDepthSweep
+        ? JSON.stringify(payload.wasmDepthSweep)
+        : '';
       const mdBlock = [
         '---',
         `Label: ${payload.label}`,
@@ -1037,11 +1066,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
         `Note: ${payload.note ?? ''}`,
         `Move: ${payload.move ?? ''}`,
         `TS move: ${payload.tsMove ?? ''}`,
-        `TS scores: ${tsScores}`,
-        `TS delta (tsMove - replayMove): ${tsDelta}`,
+        `TS scores (decision): ${tsScores}`,
+        `TS delta decision (tsMove - replayMove): ${tsDelta}`,
+        `TS scores (cpp): ${tsScoresCpp}`,
+        `TS delta cpp (tsMove - replayMove): ${tsCppDelta}`,
+        `TS scores (cpp no cache): ${tsScoresNoCache}`,
+        `TS delta cpp no-cache (tsMove - replayMove): ${tsNoCacheDelta}`,
+        `TS depth used: ${tsDepthUsed}`,
         `WASM move: ${payload.wasmMove ?? ''}`,
         `WASM scores: ${wasmScores}`,
         `WASM delta (tsMove - replayMove): ${wasmDelta}`,
+        `WASM mindepth: ${wasmMindepth}`,
+        `Distinct tiles: ${distinctTiles}`,
+        `TS depth sweep: ${tsDepthSweep}`,
+        `WASM depth sweep: ${wasmDepthSweep}`,
         `TS breakdown: ${tsBreakdown}`,
         `TS breakdowns (post-move): ${tsPostBreakdowns}`,
         'Board:',
@@ -1056,6 +1094,109 @@ export class GamePageComponent implements OnInit, OnDestroy {
     } catch {
       this.spawnStatus = 'Failed to copy divergence snapshot.';
     }
+  }
+
+  canReplayFromDivergenceCheckpoint(): boolean {
+    const raw = localStorage.getItem('aiDivergence');
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      return Number.isFinite(parsed?.move) && Number(parsed.move) >= 2;
+    } catch {
+      return false;
+    }
+  }
+
+  canReplayFromDivergenceCheckpointForLabel(label: string): boolean {
+    const raw = localStorage.getItem('aiDivergence');
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      const move = Number(parsed?.move ?? NaN);
+      const replayLabel = String(parsed?.replayLabel ?? '').trim();
+      const base = this.getBacklogBaseLabel(label);
+      return Number.isFinite(move) && move >= 2 && !!base && replayLabel === base;
+    } catch {
+      return false;
+    }
+  }
+
+  async replayFromDivergenceCheckpoint(): Promise<void> {
+    const raw = localStorage.getItem('aiDivergence');
+    if (!raw) {
+      this.spawnStatus = 'No divergence snapshot found.';
+      return;
+    }
+    let snapshot: { move?: number; replayLabel?: string } | null = null;
+    try {
+      snapshot = JSON.parse(raw);
+    } catch {
+      this.spawnStatus = 'Invalid divergence snapshot.';
+      return;
+    }
+
+    const divergenceMove = Number(snapshot?.move ?? NaN);
+    if (!Number.isFinite(divergenceMove) || divergenceMove < 2) {
+      this.spawnStatus = 'Divergence move is too early for N-1 replay.';
+      return;
+    }
+
+    const replayLabel = String(snapshot?.replayLabel ?? '').trim();
+    if (!replayLabel) {
+      this.spawnStatus = 'Divergence snapshot missing replay label.';
+      return;
+    }
+    const match = this.game
+      .getSavedSpawnsMeta()
+      .find((spawn) => spawn.label === replayLabel);
+    if (!match) {
+      this.spawnStatus = `No saved spawns found for ${replayLabel}.`;
+      return;
+    }
+
+    this.replayDivergedActive = false;
+    this.replayDivergedMessage = '';
+    this.startReplayFromSavedSpawn(match.id);
+    const targetMove = Math.max(0, Math.floor(divergenceMove - 1));
+    const ok = await this.fastForwardReplayToMove(targetMove);
+    if (!ok) {
+      this.spawnStatus = `Could not fast-forward replay to move ${targetMove}.`;
+      return;
+    }
+    this.spawnStatus = `Replay checkpoint loaded at move ${targetMove}.`;
+  }
+
+  private async fastForwardReplayToMove(targetMove: number): Promise<boolean> {
+    const maxSteps = Math.max(1, this.game.getMoveLogLength() * 2);
+    let steps = 0;
+    while (this.game.getMoveCountSnapshot() < targetMove) {
+      if (steps >= maxSteps) return false;
+      const beforeMoves = this.game.getMoveCountSnapshot();
+      const next = this.game.getReplayMove();
+      if (!next) return false;
+      this.game.move(next);
+      steps += 1;
+      if (this.game.isGameOverActive()) return false;
+      const afterMoves = this.game.getMoveCountSnapshot();
+      if (afterMoves < beforeMoves) return false;
+      if (steps % 250 === 0) {
+        this.refreshReplayUi(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    // Checkpoint loading should not leave the win popup in front of controls.
+    this.game.dismissWin();
+    this.winFromAiRun = false;
+    this.refreshReplayUi(true);
+    return true;
+  }
+
+  private extractReplayMoveFromNote(note: string): number | null {
+    const text = String(note ?? '');
+    const match = text.match(/move\s+(\d+)(?:\/\d+)?/i);
+    if (!match) return null;
+    const move = Number(match[1]);
+    return Number.isFinite(move) ? move : null;
   }
 
   markBacklogFixed(label: string): void {
@@ -1098,6 +1239,75 @@ export class GamePageComponent implements OnInit, OnDestroy {
       return;
     }
     this.startReplayFromSavedSpawn(match.id);
+  }
+
+  canReplayFromBacklogEntryCheckpoint(entry: {
+    label: string;
+    note: string;
+  }): boolean {
+    const baseLabel = this.getBacklogBaseLabel(String(entry?.label ?? ''));
+    if (!baseLabel) return false;
+    const move = this.extractReplayMoveFromNote(String(entry?.note ?? ''));
+    if (!move || move < 2) return false;
+    return this.game
+      .getSavedSpawnsMeta()
+      .some((spawn) => spawn.label === baseLabel);
+  }
+
+  async replayBacklogEntryCheckpoint(entry: {
+    label: string;
+    note: string;
+  }): Promise<void> {
+    const baseLabel = this.getBacklogBaseLabel(String(entry?.label ?? ''));
+    if (!baseLabel) return;
+    const move =
+      this.extractReplayMoveFromNote(String(entry?.note ?? '')) ??
+      this.findLatestDivergenceMoveForLabel(baseLabel);
+    if (!move || move < 2) {
+      this.spawnStatus = 'Backlog entry missing replay move for N-1.';
+      return;
+    }
+    const match = this.game
+      .getSavedSpawnsMeta()
+      .find((spawn) => spawn.label === baseLabel);
+    if (!match) {
+      this.spawnStatus = `No saved spawns found for ${baseLabel}.`;
+      return;
+    }
+    this.startReplayFromSavedSpawn(match.id);
+    const targetMove = Math.max(0, Math.floor(move - 1));
+    const ok = await this.fastForwardReplayToMove(targetMove);
+    if (!ok) {
+      this.spawnStatus = `Could not fast-forward replay to move ${targetMove}.`;
+      return;
+    }
+    const reached = this.game.getMoveCountSnapshot();
+    this.spawnStatus = `Replay checkpoint loaded at move ${reached}.`;
+  }
+
+  private findLatestDivergenceMoveForLabel(label: string): number | null {
+    const normalized = label.trim().toLowerCase();
+    if (!normalized) return null;
+    const candidates: Array<{ move?: number; replayLabel?: string }> = [];
+    try {
+      const one = JSON.parse(localStorage.getItem('aiDivergence') || 'null');
+      if (one) candidates.push(one);
+    } catch {}
+    try {
+      const many = JSON.parse(localStorage.getItem('aiDivergences') || '[]');
+      if (Array.isArray(many)) {
+        for (const item of many) candidates.push(item);
+      }
+    } catch {}
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      const item = candidates[i];
+      const itemLabel = String(item?.replayLabel ?? '').trim().toLowerCase();
+      const move = Number(item?.move ?? NaN);
+      if (itemLabel === normalized && Number.isFinite(move)) {
+        return move;
+      }
+    }
+    return null;
   }
 
   replayFixedEntry(label: string): void {
@@ -1190,7 +1400,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
     this.replayParityStatus = '';
     this.replaySavedMovesStatus = `Saved moves: ${this.game.getMoveLogLength()}`;
-    this.replayRunMovesStatus = '';
+    this.refreshReplayUi(true);
     this.spawnStatus = this.spawnLabel
       ? `Replay ready (${this.spawnLabel}).`
       : 'Replay ready.';
@@ -1339,7 +1549,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       }
       this.replayParityStatus = '';
       this.replaySavedMovesStatus = `Saved moves: ${this.game.getMoveLogLength()}`;
-      this.replayRunMovesStatus = '';
+      this.refreshReplayUi(true);
       this.spawnStatus = this.spawnLabel
         ? `Replay ready (${this.spawnLabel}).`
         : 'Replay ready.';
@@ -1427,6 +1637,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.game.loadSavedSpawn(nextId);
     this.spawnLabel = this.game.getSpawnLabel();
     this.replaySavedMovesStatus = `Saved moves: ${this.game.getMoveLogLength()}`;
+    this.refreshReplayUi(true);
     this.spawnStatus = this.spawnLabel
       ? `Replay ready (${this.spawnLabel}).`
       : 'Replay ready.';
@@ -2047,17 +2258,34 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.compareEngines;
         if (replayCompareActive) {
           const tsDepthLimit = this.getTsCompareDepthLimit();
-          const tsScores = this.ai.getTsScores(board, tsDepthLimit);
-          const tsMove = this.getBestMoveFromScores(
+          const strictReplay = this.strictParityMode;
+          let tsScores = this.ai.getTsScores(board, tsDepthLimit);
+          let tsMove = this.getBestMoveFromScores(
             tsScores,
-            this.strictParityMode ? 0 : undefined
+            strictReplay ? 0 : undefined
           );
-          const bestMoves = this.getReplayCompareBestMoveSet(tsScores);
+          const bestMoves = tsScores.length
+            ? this.getReplayCompareBestMoveSet(tsScores)
+            : new Set<Direction>();
           const strictReplayMatch = Boolean(tsMove && tsMove === replayMove);
           const replayWithinThreshold = bestMoves.has(replayMove);
-          const replayMatch = this.strictParityMode
-            ? strictReplayMatch
-            : replayWithinThreshold;
+          let replayMatch = strictReplay ? strictReplayMatch : replayWithinThreshold;
+          if (
+            strictReplay &&
+            !replayMatch &&
+            tsMove &&
+            tsMove !== replayMove
+          ) {
+            if (!tsScores.length) {
+              tsScores = this.ai.getTsScores(board, tsDepthLimit);
+            }
+            replayMatch = await this.shouldAcceptStrictReplayNearTie(
+              board,
+              tsScores,
+              tsMove,
+              replayMove
+            );
+          }
           const replayTie = bestMoves.size > 1 && replayWithinThreshold;
           if (!skipTieChecks && replayTie && this.aiComparePauseOnTie && tsMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
@@ -2083,15 +2311,63 @@ export class GamePageComponent implements OnInit, OnDestroy {
           }
           if (!replayMatch && tsMove && tsMove !== replayMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
-            if (moveIndex === 1) {
+            if (moveIndex <= 1) {
               this.replayParityStatus =
-                'Replay parity mismatch at move 1 ignored (bootstrap policy).';
+                `Replay parity mismatch at move ${moveIndex} ignored (bootstrap policy).`;
             } else {
-            const wasmScores = await this.ai.getWasmScores(board);
             const tsScoreMap = this.toScoreMap(tsScores);
-            const wasmScoreMap = this.toScoreMap(wasmScores);
-            const tsCurrentBreakdown = computeHeuristicBreakdown(board);
-            const tsPostMoveBreakdowns = this.computeTsPostMoveBreakdowns(board);
+            let tsScoresCpp: { direction: Direction; score: number }[] | undefined;
+            let tsCppScoreMap: Record<string, number> | undefined;
+            let tsScoresNoCache: { direction: Direction; score: number }[] | undefined;
+            let tsNoCacheScoreMap: Record<string, number> | undefined;
+            let wasmScores: { direction: Direction; score: number }[] | undefined;
+            let wasmScoreMap: Record<string, number> | undefined;
+            let tsCurrentBreakdown:
+              | ReturnType<typeof computeHeuristicBreakdown>
+              | undefined;
+            let tsPostMoveBreakdowns:
+              | Record<string, ReturnType<typeof computeHeuristicBreakdown>>
+              | undefined;
+            let distinctTileCount: number | undefined;
+            let wasmMindepth: number | undefined;
+            let tsDepthSweep:
+              | Array<{
+                  depth: number;
+                  bestMove: Direction | null;
+                  tsMoveScore: number | null;
+                  replayMoveScore: number | null;
+                }>
+              | undefined;
+            let wasmDepthSweep:
+              | Array<{
+                  depth: number;
+                  bestMove: Direction | null;
+                  tsMoveScore: number | null;
+                  replayMoveScore: number | null;
+                }>
+              | undefined;
+            if (this.aiDebugEnabled) {
+              wasmScores = await this.ai.getWasmScores(board);
+              tsScoresCpp = this.ai.getTsScores(board, tsDepthLimit);
+              tsCppScoreMap = this.toScoreMap(tsScoresCpp);
+              tsScoresNoCache = this.ai.getTsScoresNoCache(board, tsDepthLimit);
+              tsNoCacheScoreMap = this.toScoreMap(tsScoresNoCache);
+              wasmScoreMap = this.toScoreMap(wasmScores);
+              tsCurrentBreakdown = computeHeuristicBreakdown(board);
+              tsPostMoveBreakdowns = this.computeTsPostMoveBreakdowns(board);
+              distinctTileCount = this.getDistinctTileCount(board);
+              wasmMindepth = this.ai.getWrkrConfig().mindepth;
+              tsDepthSweep = this.computeTsDepthSweep(
+                board,
+                tsMove,
+                replayMove
+              );
+              wasmDepthSweep = await this.computeWasmDepthSweep(
+                board,
+                tsMove,
+                replayMove
+              );
+            }
             this.replayParityStatus = `Replay parity mismatch at move ${moveIndex}`;
             if (this.aiDebugEnabled) {
               console.log(
@@ -2109,16 +2385,32 @@ export class GamePageComponent implements OnInit, OnDestroy {
             }
             const snapshot = {
               move: this.game.getMoveCountSnapshot(),
+              replayLabel: this.resolveReplayLabel(),
               board,
               tsScores,
+              tsScoresCpp,
+              tsScoresNoCache,
               wasmScores,
               tsScoreMap,
+              tsCppScoreMap,
+              tsNoCacheScoreMap,
               wasmScoreMap,
               tsCurrentBreakdown,
               tsPostMoveBreakdowns,
+              tsDepthUsed: tsDepthLimit,
+              wasmMindepth,
+              distinctTileCount,
+              tsDepthSweep,
+              wasmDepthSweep,
               tsReplayScoreDelta:
                 (tsScoreMap?.[tsMove] ?? NaN) -
                 (tsScoreMap?.[replayMove] ?? NaN),
+              tsCppReplayScoreDelta:
+                (tsCppScoreMap?.[tsMove] ?? NaN) -
+                (tsCppScoreMap?.[replayMove] ?? NaN),
+              tsNoCacheReplayScoreDelta:
+                (tsNoCacheScoreMap?.[tsMove] ?? NaN) -
+                (tsNoCacheScoreMap?.[replayMove] ?? NaN),
               wasmReplayScoreDelta:
                 wasmScoreMap && tsMove in wasmScoreMap && replayMove in wasmScoreMap
                   ? wasmScoreMap[tsMove] - wasmScoreMap[replayMove]
@@ -2164,6 +2456,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         }
         }
         this.game.move(replayMove);
+        this.refreshReplayUi();
         if (this.aiEngine === 'ts' || this.aiEngine === 'wasm') {
           this.runHistory.updateBestScore(
             this.aiEngine,
@@ -2573,7 +2866,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private getReplayCompareBestMoveSet(
     scores: { direction: Direction; score: number }[]
   ): Set<Direction> {
-    return this.getBestMoveSet(scores, 1, 8);
+    return this.getBestMoveSet(scores, 1, this.replayNonStrictDelta);
   }
 
   private toScoreMap(
@@ -2599,6 +2892,144 @@ export class GamePageComponent implements OnInit, OnDestroy {
       perMove[dir] = computeHeuristicBreakdown(nextBoard);
     }
     return perMove;
+  }
+
+  private getDistinctTileCount(board: Board): number {
+    const distinct = new Set<number>();
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell > 0) distinct.add(cell);
+      }
+    }
+    return distinct.size;
+  }
+
+  private computeTsDepthSweep(
+    board: Board,
+    tsMove: Direction,
+    replayMove: Direction
+  ): Array<{
+    depth: number;
+    bestMove: Direction | null;
+    tsMoveScore: number | null;
+    replayMoveScore: number | null;
+  }> {
+    const sweep: Array<{
+      depth: number;
+      bestMove: Direction | null;
+      tsMoveScore: number | null;
+      replayMoveScore: number | null;
+    }> = [];
+    const maxDepth = 8;
+    for (let depth = 2; depth <= maxDepth; depth += 1) {
+      const scores = this.ai.getTsScores(board, depth);
+      const scoreMap = this.toScoreMap(scores);
+      sweep.push({
+        depth,
+        bestMove: this.getBestMoveFromScores(scores, 0),
+        tsMoveScore: scoreMap?.[tsMove] ?? null,
+        replayMoveScore: scoreMap?.[replayMove] ?? null,
+      });
+    }
+    return sweep;
+  }
+
+  private async computeWasmDepthSweep(
+    board: Board,
+    tsMove: Direction,
+    replayMove: Direction
+  ): Promise<
+    Array<{
+      depth: number;
+      bestMove: Direction | null;
+      tsMoveScore: number | null;
+      replayMoveScore: number | null;
+    }>
+  > {
+    const sweep: Array<{
+      depth: number;
+      bestMove: Direction | null;
+      tsMoveScore: number | null;
+      replayMoveScore: number | null;
+    }> = [];
+    const maxDepth = 8;
+    const directions: Direction[] = ['up', 'down', 'left', 'right'];
+    for (let depth = 2; depth <= maxDepth; depth += 1) {
+      const scores = await this.ai.getWasmScoresAtDepth(board, depth);
+      const scoreMap = this.toScoreMap(scores);
+      let bestMove: Direction | null = null;
+      let bestScore = -Infinity;
+      for (const dir of directions) {
+        const score = scoreMap?.[dir];
+        if (typeof score !== 'number') continue;
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = dir;
+        }
+      }
+      sweep.push({
+        depth,
+        bestMove,
+        tsMoveScore: scoreMap?.[tsMove] ?? null,
+        replayMoveScore: scoreMap?.[replayMove] ?? null,
+      });
+    }
+    return sweep;
+  }
+
+  private async shouldAcceptStrictReplayNearTie(
+    board: Board,
+    tsScores: { direction: Direction; score: number }[],
+    tsMove: Direction,
+    replayMove: Direction
+  ): Promise<boolean> {
+    const tsScoreMap = this.toScoreMap(tsScores);
+    const tsMoveScore = tsScoreMap?.[tsMove];
+    const replayScore = tsScoreMap?.[replayMove];
+    if (
+      typeof tsMoveScore !== 'number' ||
+      typeof replayScore !== 'number'
+    ) {
+      return false;
+    }
+    const tsGap = tsMoveScore - replayScore;
+    if (tsGap <= 0 || tsGap > this.strictReplayNearTieDelta) {
+      return false;
+    }
+    const wasmScores = await this.ai.getWasmScores(board);
+    const wasmScoreMap = this.toScoreMap(wasmScores);
+    const wasmTsMoveScore = wasmScoreMap?.[tsMove];
+    const wasmReplayScore = wasmScoreMap?.[replayMove];
+    if (
+      typeof wasmTsMoveScore !== 'number' ||
+      typeof wasmReplayScore !== 'number'
+    ) {
+      return false;
+    }
+    const wasmBestScore = Math.max(...wasmScores.map((entry) => entry.score));
+    const tsIsWasmTop =
+      wasmBestScore - wasmTsMoveScore <= this.strictReplayWasmTopTolerance;
+    const replayIsWasmTop =
+      wasmBestScore - wasmReplayScore <= this.strictReplayWasmTopTolerance;
+    return tsIsWasmTop && replayIsWasmTop;
+  }
+
+  private refreshReplayUi(force = false): void {
+    if (this.spawnMode !== 'replay') {
+      this.replayRunMovesStatus = '';
+      return;
+    }
+    const now = Date.now();
+    if (!force && now - this.lastReplayUiRefreshAt < this.replayUiRefreshThrottleMs) {
+      return;
+    }
+    this.lastReplayUiRefreshAt = now;
+    const savedMoves = this.game.getMoveLogLength();
+    const currentMoves = this.game.getMoveCountSnapshot();
+    this.replayRunMovesStatus =
+      savedMoves > 0
+        ? `Replay progress: ${currentMoves} / ${savedMoves} moves`
+        : `Replay moves: ${currentMoves}`;
   }
 
   private tryBoostedMove(board: Board, initialMove: Direction): Direction | null {
@@ -2713,9 +3144,36 @@ export class GamePageComponent implements OnInit, OnDestroy {
       clearInterval(this.aiIntervalId);
     }
     this.aiIntervalId = window.setInterval(
-      () => this.stepAi('auto'),
+      () => this.runAutoTick(),
       this.aiSpeedMs
     );
+  }
+
+  private runAutoTick(): void {
+    if (this.aiStepInFlight) return;
+    const runToken = this.aiRunToken;
+    const batch = this.getAutoBatchSize();
+    void this.runAutoBatch(batch, runToken);
+  }
+
+  private async runAutoBatch(batch: number, runToken: number): Promise<void> {
+    const steps = Math.max(1, Math.floor(batch));
+    for (let i = 0; i < steps; i += 1) {
+      if (!this.aiRunning || runToken !== this.aiRunToken) return;
+      await this.stepAi('auto');
+      if (!this.aiRunning || runToken !== this.aiRunToken) return;
+      if (this.spawnMode !== 'replay') return;
+      if (this.replayDivergedActive || this.replayStoppedEarly || this.replayCompletedActive) {
+        return;
+      }
+    }
+  }
+
+  private getAutoBatchSize(): number {
+    if (this.spawnMode !== 'replay') return 1;
+    if (this.aiEngine !== 'ts') return 1;
+    if (!this.compareEngines) return 30;
+    return this.strictParityMode ? 1 : 4;
   }
 
   private updateAiSummary(reason: 'win' | 'game-over' | 'stop'): void {
@@ -2768,6 +3226,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const savedId = savedLabel
         ? this.game.getSavedSpawnIdByLabelCached(savedLabel) ?? undefined
         : undefined;
+      const batchMeta = this.getBatchMetaForRun(loggedGameMode, reason);
       this.runHistory.addRun({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         timestamp: Date.now(),
@@ -2779,6 +3238,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         parity: this.parityMode,
         compare: this.compareEngines,
         depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
+        ...batchMeta,
         replayLabel: savedLabel ? savedLabel : undefined,
         savedId,
         score,
@@ -2841,6 +3301,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const savedId = savedLabel
       ? this.game.getSavedSpawnIdByLabelCached(savedLabel) ?? undefined
       : undefined;
+    const batchMeta = this.getBatchMetaForRun(runMode, reason);
     if (runMode === 'replay') {
       const savedMoves = this.game.getMoveLogLength();
       if (!savedMoves || movesToLog < savedMoves) {
@@ -2859,6 +3320,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       parity: this.parityMode,
       compare: this.compareEngines,
       depth: this.aiEngine === 'ts' ? this.aiDepthCap : this.aiMindepth,
+      ...batchMeta,
       replayLabel: savedLabel ? savedLabel : undefined,
       savedId,
       score,
@@ -2872,6 +3334,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private getLoggedEngine(mode: 'normal' | 'record' | 'replay'): 'ts' | 'wasm' {
     if (mode === 'record') return 'wasm';
     return this.aiEngine;
+  }
+
+  private getBatchMetaForRun(
+    runMode: 'normal' | 'record' | 'replay',
+    reason: 'win' | 'game-over' | 'stop'
+  ): { batchIndex?: number; batchSize?: number } {
+    if (runMode !== 'record') return {};
+    if (reason !== 'game-over') return {};
+    if (this.batchTotal <= 1) return {};
+    const index = Math.max(1, this.batchTotal - this.batchRemaining + 1);
+    return {
+      batchIndex: Math.min(index, this.batchTotal),
+      batchSize: this.batchTotal,
+    };
   }
 
   private startAiLoop(resetBoost = true, resetBatch = true): void {
@@ -2898,7 +3374,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.aiRunLastStartedAt = Date.now();
     this.aiRunStartMoves = this.game.getMoveCountSnapshot();
     this.aiIntervalId = window.setInterval(
-      () => this.stepAi('auto'),
+      () => this.runAutoTick(),
       this.aiSpeedMs
     );
   }

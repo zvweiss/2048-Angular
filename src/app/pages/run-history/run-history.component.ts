@@ -16,6 +16,7 @@ type SortKey =
   | 'moves'
   | 'engine'
   | 'gameMode'
+  | 'batch'
   | 'parity'
   | 'compare'
   | 'outcome'
@@ -48,6 +49,7 @@ export class RunHistoryComponent implements OnInit {
     { key: 'maxTile', label: 'Max Tile' },
     { key: 'engine', label: 'Engine' },
     { key: 'gameMode', label: 'Game Mode' },
+    { key: 'batch', label: 'Batch' },
     { key: 'parity', label: 'Parity' },
     { key: 'compare', label: 'Compare' },
     { key: 'moves', label: 'Moves' },
@@ -101,6 +103,7 @@ export class RunHistoryComponent implements OnInit {
         topTiles: (run.topTiles ?? []).join('|'),
         engine: run.engine ?? '',
         gameMode: run.gameMode ?? '',
+        batch: this.getBatchDisplay(run),
         parity: run.parity ? 'yes' : 'no',
         compare: run.compare ? 'yes' : 'no',
         moves: run.moves,
@@ -220,6 +223,13 @@ export class RunHistoryComponent implements OnInit {
 
   formatGameMode(mode?: RunSummary['gameMode']): string {
     return mode ?? 'normal';
+  }
+
+  getBatchDisplay(run: RunSummary): string {
+    if (run.gameMode !== 'record') return '-';
+    if (!run.batchSize || run.batchSize <= 1) return '-';
+    if (!run.batchIndex || run.batchIndex < 1) return '-';
+    return `${run.batchIndex}/${run.batchSize}`;
   }
 
   renameReplayLabel(run: RunSummary): void {
@@ -428,6 +438,9 @@ export class RunHistoryComponent implements OnInit {
         return run.engine ?? '';
       case 'gameMode':
         return run.gameMode ?? '';
+      case 'batch':
+        if (!run.batchSize || run.batchSize <= 1 || !run.batchIndex) return 0;
+        return run.batchSize * 1000 + run.batchIndex;
       case 'parity':
         return run.parity ? 1 : 0;
       case 'compare':

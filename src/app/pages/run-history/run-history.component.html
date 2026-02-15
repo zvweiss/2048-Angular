@@ -69,6 +69,12 @@
               {{ getSortIndicator('gameMode') }}
             </span>
           </th>
+          <th (click)="sortBy('batch')">
+            Batch
+            <span class="sort-indicator" *ngIf="getSortIndicator('batch')">
+              {{ getSortIndicator('batch') }}
+            </span>
+          </th>
           <th (click)="sortBy('parity')">
             Parity
             <span class="sort-indicator" *ngIf="getSortIndicator('parity')">
@@ -123,6 +129,7 @@
           <td class="num-col">{{ run.maxTile }}</td>
           <td>{{ run.engine ?? '' }}</td>
           <td>{{ formatGameMode(run.gameMode) }}</td>
+          <td>{{ getBatchDisplay(run) }}</td>
           <td>{{ getParityDisplay(run) }}</td>
           <td>{{ getCompareDisplay(run) }}</td>
           <td class="num-col">{{ run.moves }}</td>

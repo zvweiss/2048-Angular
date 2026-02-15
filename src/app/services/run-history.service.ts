@@ -13,6 +13,8 @@ export type RunSummary = {
   parity?: boolean;
   compare?: boolean;
   depth?: number;
+  batchIndex?: number;
+  batchSize?: number;
   replayLabel?: string;
   savedId?: number;
   score: number;

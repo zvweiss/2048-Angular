@@ -67,6 +67,13 @@
             <button type="button" (click)="copyDivergenceSnapshot()">
               Copy Backlog Block
             </button>
+            <button
+              type="button"
+              (click)="replayFromDivergenceCheckpoint()"
+              *ngIf="canReplayFromDivergenceCheckpoint()"
+            >
+              Replay &#64; N-1
+            </button>
           </div>
         </div>
         <details class="divergence-panel" [open]="divergenceBacklog.length > 0">
@@ -86,6 +93,13 @@
               <div class="divergence-entry-actions">
                 <button type="button" (click)="replayBacklogEntry(entry.label)">
                   Replay
+                </button>
+                <button
+                  type="button"
+                  (click)="replayBacklogEntryCheckpoint(entry)"
+                  *ngIf="canReplayFromBacklogEntryCheckpoint(entry)"
+                >
+                  Replay &#64; N-1
                 </button>
                 <button type="button" (click)="markBacklogFixed(entry.label)">
                   Mark Fixed
@@ -316,9 +330,6 @@
           <div class="ai-boost-status" *ngIf="replaySavedMovesStatus">
             {{ replaySavedMovesStatus }}
           </div>
-          <div class="ai-boost-status" *ngIf="replayRunMovesStatus">
-            {{ replayRunMovesStatus }}
-          </div>
           <div class="ai-boost-status" *ngIf="aiBoostStatus">
             {{ aiBoostStatus }}
           </div>
@@ -436,6 +447,12 @@
         <p>{{ replayDivergedMessage }}</p>
         <div class="popup-actions">
           <button (click)="copyDivergenceSnapshot()">Copy Backlog Block</button>
+          <button
+            (click)="replayFromDivergenceCheckpoint()"
+            *ngIf="canReplayFromDivergenceCheckpoint()"
+          >
+            Replay &#64; N-1
+          </button>
           <button (click)="replayAgainAfterDivergence()">Replay Again</button>
           <button (click)="dismissReplayDiverged()">Close</button>
         </div>

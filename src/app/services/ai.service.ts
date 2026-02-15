@@ -47,15 +47,23 @@ export class AiService {
   async getWasmScores(
     board: Board
   ): Promise<{ direction: Direction; score: number }[]> {
+    return this.getWasmScoresAtDepth(board, this.wrkrConfig.mindepth);
+  }
+
+  async getWasmScoresAtDepth(
+    board: Board,
+    mindepth: number
+  ): Promise<{ direction: Direction; score: number }[]> {
     if (!this.wrkr.isAvailable()) return [];
     const rows = boardToRows(board);
     const directions: Direction[] = ['up', 'down', 'left', 'right'];
     const candidates = directions.filter(
       (direction) => applyMove(rows, direction).moved
     );
+    const config = { mindepth };
     const scores = await Promise.all(
       candidates.map((direction) =>
-        this.wrkr.scoreDirection(board, direction, this.wrkrConfig)
+        this.wrkr.scoreDirection(board, direction, config)
       )
     );
     return candidates.map((direction, index) => ({
@@ -69,6 +77,20 @@ export class AiService {
     maxDepth = 4
   ): { direction: Direction; score: number }[] {
     return computeBitboardCppScores(board, maxDepth);
+  }
+
+  getTsScoresNoCache(
+    board: Board,
+    maxDepth = 4
+  ): { direction: Direction; score: number }[] {
+    return computeBitboardCppScores(board, maxDepth, { useCache: false });
+  }
+
+  getTsAiJsScores(
+    board: Board,
+    maxDepth = 4
+  ): { direction: Direction; score: number }[] {
+    return computeBitboardAiJsScores(board, { maxDepth, timeBudgetMs: 0 });
   }
 
   updateWrkrConfig(config: { mindepth: number }): void {
