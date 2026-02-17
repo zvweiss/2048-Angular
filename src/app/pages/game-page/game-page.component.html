@@ -27,7 +27,7 @@
       <div class="control-item">
         <button
           (click)="toggleAiRun()"
-          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive"
+          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || replayCheckpointLoading"
           [title]="aiRunning ? 'Stop AI' : 'Run AI'"
         >
           {{ aiRunning ? '🔴' : '🟢' }}
@@ -37,7 +37,7 @@
       <div class="control-item">
         <button
           (click)="stepAi('manual')"
-          [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked"
+          [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading"
           [attr.title]="aiRunning || gameOverActive ? null : 'Single Step'"
         >
           🚶
@@ -47,7 +47,7 @@
       <div class="control-item">
         <button
           (click)="showHint()"
-          [disabled]="aiRunning || gameOverActive || hintLoading || isRecordingLocked || isRecordManualLocked"
+          [disabled]="aiRunning || gameOverActive || hintLoading || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading"
           [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
         >
           {{ hintIcon() }}
@@ -87,7 +87,12 @@
             </div>
             <div class="divergence-entry" *ngFor="let entry of divergenceBacklog">
               <div class="divergence-entry-text">
-                <span class="divergence-label">{{ entry.label }}</span>
+                <span class="divergence-entry-head">
+                  <span class="divergence-label">{{ entry.label }}</span>
+                  <span class="divergence-state-badge" [class.investigating]="entry.status === 'investigating'">
+                    {{ getBacklogStatusLabel(entry) }}
+                  </span>
+                </span>
                 <span class="divergence-note">{{ entry.note }}</span>
               </div>
               <div class="divergence-entry-actions">
@@ -388,7 +393,7 @@
     <app-debug-panel *ngIf="debugMode && debugVisible" />
 
     <!-- WIN POPUP -->
-    <div class="overlay" *ngIf="(win$ | async) && !aiRunning && !winFromAiRun">
+    <div class="overlay" *ngIf="(win$ | async) && !aiRunning && !winFromAiRun && spawnMode !== 'replay' && !replayCheckpointLoading">
       <div class="popup">
         <h2>🎉 You win!</h2>
         <p>Keep playing to reach higher scores.</p>
@@ -397,7 +402,7 @@
     </div>
 
     <!-- GAME OVER POPUP -->
-    <div class="overlay" *ngIf="(gameOver$ | async) && !gameOverDismissed">
+    <div class="overlay" *ngIf="(gameOver$ | async) && !gameOverDismissed && spawnMode !== 'replay'">
       <div class="popup">
         <h2>💀 Game Over</h2>
         <p>{{ gameOverMessage }}</p>

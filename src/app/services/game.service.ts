@@ -14,6 +14,11 @@ export class GameService {
   private moveLog: Direction[] = [];
   private moveIndex = 0;
   private replayExhausted = false;
+  private replayStopReason:
+    | 'move-log-exhausted'
+    | 'spawn-log-exhausted'
+    | 'spawn-mismatch'
+    | null = null;
   private spawnLabel = '';
   private savedSpawns: SavedSpawn[] = [];
   private recordSpawnsArchive: SavedSpawn[] = [];
@@ -94,6 +99,7 @@ export class GameService {
     this.spawnIndex = 0;
     this.moveIndex = 0;
     this.replayExhausted = false;
+    this.replayStopReason = null;
     this.spawnTile(board);
     this.spawnTile(board);
     this.boardSubject.next(board);
@@ -114,9 +120,9 @@ export class GameService {
 
   setSpawnMode(mode: 'normal' | 'record' | 'replay'): void {
     this.spawnMode = mode;
-    if (mode !== 'replay') {
-      this.replayExhausted = false;
-    }
+    // Mode changes should never preserve an exhausted replay cursor.
+    this.replayExhausted = false;
+    this.replayStopReason = null;
   }
 
   getSpawnMode(): 'normal' | 'record' | 'replay' {
@@ -192,6 +198,40 @@ export class GameService {
     return this.currentSavedSpawnId;
   }
 
+  getReplayDebugState(): {
+    spawnMode: 'normal' | 'record' | 'replay';
+    replayExhausted: boolean;
+    moveIndex: number;
+    moveLogLength: number;
+    spawnIndex: number;
+    spawnLogLength: number;
+    currentSavedSpawnId: string | null;
+    replayStopReason:
+      | 'move-log-exhausted'
+      | 'spawn-log-exhausted'
+      | 'spawn-mismatch'
+      | null;
+  } {
+    return {
+      spawnMode: this.spawnMode,
+      replayExhausted: this.replayExhausted,
+      moveIndex: this.moveIndex,
+      moveLogLength: this.moveLog.length,
+      spawnIndex: this.spawnIndex,
+      spawnLogLength: this.spawnLog.length,
+      currentSavedSpawnId: this.currentSavedSpawnId,
+      replayStopReason: this.replayStopReason,
+    };
+  }
+
+  getReplayStopReason():
+    | 'move-log-exhausted'
+    | 'spawn-log-exhausted'
+    | 'spawn-mismatch'
+    | null {
+    return this.replayStopReason;
+  }
+
   getSpawnLabel(): string {
     if (!this.spawnLabel) {
       this.spawnLabel = localStorage.getItem('spawnLabel') ?? '';
@@ -202,8 +242,9 @@ export class GameService {
   getReplayMove(): Direction | null {
     if (this.spawnMode !== 'replay') return null;
     const next = this.moveLog[this.moveIndex];
-    if (!next) {
+    if (next === undefined || next === null) {
       this.replayExhausted = true;
+      this.replayStopReason = 'move-log-exhausted';
       this.gameOverSubject.next(true);
       return null;
     }
@@ -268,6 +309,7 @@ export class GameService {
     this.moveLog = [];
     this.moveIndex = 0;
     this.replayExhausted = false;
+    this.replayStopReason = null;
     this.spawnLabel = '';
   }
 
@@ -361,6 +403,8 @@ export class GameService {
     this.spawnLabel = entry.label;
     this.spawnIndex = 0;
     this.moveIndex = 0;
+    this.replayExhausted = false;
+    this.replayStopReason = null;
     this.currentSavedSpawnId = entry.id;
     return true;
   }
@@ -810,6 +854,7 @@ export class GameService {
       if (!next) {
         this.debug.log('Replay spawn log exhausted.');
         this.replayExhausted = true;
+        this.replayStopReason = 'spawn-log-exhausted';
         this.gameOverSubject.next(true);
         return;
       }
@@ -817,6 +862,7 @@ export class GameService {
       if (board[next.r][next.c] !== 0) {
         this.debug.log('Replay spawn mismatch: cell not empty.');
         this.replayExhausted = true;
+        this.replayStopReason = 'spawn-mismatch';
         this.gameOverSubject.next(true);
         return;
       }

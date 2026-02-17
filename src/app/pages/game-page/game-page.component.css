@@ -174,8 +174,32 @@
   gap: 0.15rem;
 }
 
+.divergence-entry-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .divergence-label {
   font-weight: 700;
+}
+
+.divergence-state-badge {
+  border: 1px solid #bfae9f;
+  background: #ece6dd;
+  color: #4b3d32;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 0.05rem 0.4rem;
+}
+
+.divergence-state-badge.investigating {
+  border-color: #b69064;
+  background: #f8ebd9;
+  color: #6b4c29;
 }
 
 .divergence-note {

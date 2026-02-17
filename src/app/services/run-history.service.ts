@@ -108,6 +108,18 @@ export class RunHistoryService {
     }
   }
 
+  updateRun(id: string, patch: Partial<RunSummary>): boolean {
+    const runId = id.trim();
+    if (!runId) return false;
+    const runs = this.getRuns();
+    const idx = runs.findIndex((run) => run.id === runId);
+    if (idx < 0) return false;
+    runs[idx] = { ...runs[idx], ...patch };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
+    this.runsSubject.next(runs);
+    return true;
+  }
+
   updateLatestRecordLabel(label: string, savedId?: number): void {
     const cleaned = label.trim();
     if (!cleaned) return;
