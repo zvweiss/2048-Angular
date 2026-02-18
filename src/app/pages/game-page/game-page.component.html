@@ -27,7 +27,7 @@
       <div class="control-item">
         <button
           (click)="toggleAiRun()"
-          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || replayCheckpointLoading"
+          [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || replayCheckpointLoading || replayDiagnosticActive"
           [title]="aiRunning ? 'Stop AI' : 'Run AI'"
         >
           {{ aiRunning ? '🔴' : '🟢' }}
@@ -37,7 +37,7 @@
       <div class="control-item">
         <button
           (click)="stepAi('manual')"
-          [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading"
+          [disabled]="aiRunning || gameOverActive || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading || replayDiagnosticActive"
           [attr.title]="aiRunning || gameOverActive ? null : 'Single Step'"
         >
           🚶
@@ -47,7 +47,7 @@
       <div class="control-item">
         <button
           (click)="showHint()"
-          [disabled]="aiRunning || gameOverActive || hintLoading || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading"
+          [disabled]="aiRunning || gameOverActive || hintLoading || isRecordingLocked || isRecordManualLocked || replayCheckpointLoading || replayDiagnosticActive"
           [attr.title]="aiRunning || gameOverActive ? null : 'Hint'"
         >
           {{ hintIcon() }}
@@ -74,6 +74,23 @@
             >
               Replay &#64; N-1
             </button>
+            <button
+              type="button"
+              (click)="runReplayDiagnosticFromLatestDivergence()"
+              [disabled]="replayDiagnosticActive"
+              *ngIf="canRunReplayDiagnostic()"
+            >
+              Run Diagnostic
+            </button>
+          </div>
+        </div>
+        <div class="ai-run-banner" *ngIf="replayDiagnosticActive || replayDiagnosticStatus">
+          <div *ngIf="replayDiagnosticActive">
+            Diagnostic running: {{ replayDiagnosticStep || 'initializing' }}
+          </div>
+          <div>{{ replayDiagnosticStatus }}</div>
+          <div class="divergence-entry-actions" *ngIf="replayDiagnosticActive">
+            <button type="button" (click)="cancelReplayDiagnostic()">Cancel Diagnostic</button>
           </div>
         </div>
         <details class="divergence-panel" [open]="divergenceBacklog.length > 0">
@@ -475,6 +492,18 @@
         <h2>✅ Replay Completed</h2>
         <p>{{ replayCompletedMessage }}</p>
         <button (click)="dismissReplayCompleted()">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- REPLAY DIAGNOSTIC RESULT -->
+    <div class="overlay" *ngIf="replayDiagnosticResultActive">
+      <div class="popup">
+        <h2>Replay Diagnostic</h2>
+        <pre class="diagnostic-report">{{ replayDiagnosticResultText }}</pre>
+        <div class="popup-actions">
+          <button (click)="copyReplayDiagnosticResult()">Copy Report</button>
+          <button (click)="dismissReplayDiagnosticResult()">Dismiss</button>
+        </div>
       </div>
     </div>
 

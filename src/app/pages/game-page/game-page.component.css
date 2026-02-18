@@ -228,6 +228,20 @@
   font-weight: 600;
 }
 
+.diagnostic-report {
+  text-align: left;
+  background: #f6f1ea;
+  border: 1px solid #cdb9a7;
+  border-radius: 8px;
+  padding: 0.5rem;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.74rem;
+  color: #2f241c;
+}
+
 .ai-step-primary {
   display: none;
 }

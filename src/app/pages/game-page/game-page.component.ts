@@ -42,6 +42,25 @@ type DivergenceEntry = {
   status: DivergenceStatus;
 };
 
+type ReplayDiagnosticSnapshot = {
+  phase: 'non-strict' | 'strict';
+  stop: 'diverged' | 'completed' | 'stopped-early' | 'game-over' | 'timeout' | 'unknown';
+  moveCount: number;
+  replayStopReason: string | null;
+  divergenceMove?: number;
+  tsMove?: string;
+  replayMove?: string;
+  tsDelta?: number;
+};
+
+type ReplayDiagnosticReport = {
+  label: string;
+  targetMove: number;
+  startedAt: number;
+  finishedAt: number;
+  snapshots: ReplayDiagnosticSnapshot[];
+};
+
 @Component({
   selector: 'app-game-page',
   standalone: true,
@@ -132,6 +151,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replayCompletedActive = false;
   replayCheckpointLoading = false;
   replayCheckpointArmed = false;
+  replayDiagnosticActive = false;
+  replayDiagnosticStep = '';
+  replayDiagnosticStatus = '';
+  replayDiagnosticResultActive = false;
+  replayDiagnosticResultText = '';
+  private replayDiagnosticAbort = false;
+  private replayDiagnosticTargetLabel = '';
+  private replayDiagnosticTargetMove: number | null = null;
   private suppressReplayStopPrompt = false;
   replayCompletedMessage = '';
   replayDivergedActive = false;
@@ -1311,6 +1338,277 @@ export class GamePageComponent implements OnInit, OnDestroy {
     } finally {
       this.replayCheckpointLoading = false;
     }
+  }
+
+  canRunReplayDiagnostic(): boolean {
+    return !this.replayDiagnosticActive && this.canReplayFromDivergenceCheckpoint();
+  }
+
+  async runReplayDiagnosticFromLatestDivergence(): Promise<void> {
+    if (this.replayDiagnosticActive) return;
+    const seed = this.getLatestDivergenceSeed();
+    if (!seed) {
+      this.spawnStatus = 'No divergence snapshot found for diagnostic.';
+      return;
+    }
+    const previous = {
+      compareEnabled: this.aiCompareEnabled,
+      comparePause: this.aiComparePause,
+      comparePauseOnTie: this.aiComparePauseOnTie,
+      compareEngines: this.compareEngines,
+      strictParityMode: this.strictParityMode,
+      pauseOnTie: this.aiComparePauseOnTie,
+      logAiScores: this.aiDebugEnabled,
+    };
+    this.replayDiagnosticActive = true;
+    this.replayDiagnosticAbort = false;
+    this.replayDiagnosticResultActive = false;
+    this.replayDiagnosticResultText = '';
+    this.replayDiagnosticStatus = `Diagnostic target: move ${seed.move} (${seed.label}).`;
+    this.replayDiagnosticTargetLabel = seed.label;
+    this.replayDiagnosticTargetMove = seed.move;
+    const startedAt = Date.now();
+    const snapshots: ReplayDiagnosticSnapshot[] = [];
+    try {
+      if (this.aiRunning) {
+        this.lastStopOrigin = 'user';
+        this.stopAi('stop');
+      }
+      this.aiComparePauseOnTie = false;
+      this.aiDebugEnabled = true;
+      this.aiCompareEnabled = true;
+      this.aiComparePause = false;
+      this.aiComparePauseOnTie = false;
+      this.compareEngines = true;
+      this.updateAiDebug();
+      this.updateAiCompare();
+
+      snapshots.push(
+        await this.runReplayDiagnosticPhase('non-strict', false)
+      );
+      if (!this.replayDiagnosticAbort) {
+        snapshots.push(await this.runReplayDiagnosticPhase('strict', true));
+      }
+
+      const finishedAt = Date.now();
+      const report: ReplayDiagnosticReport = {
+        label: seed.label,
+        targetMove: seed.move,
+        startedAt,
+        finishedAt,
+        snapshots,
+      };
+      this.replayDiagnosticResultText = this.formatReplayDiagnosticReport(report);
+      this.replayDiagnosticResultActive = true;
+      this.replayDiagnosticStatus = 'Replay diagnostic completed.';
+    } catch (error) {
+      this.replayDiagnosticStatus = `Replay diagnostic failed: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`;
+    } finally {
+      this.replayDiagnosticTargetLabel = '';
+      this.replayDiagnosticTargetMove = null;
+      this.strictParityMode = previous.strictParityMode;
+      this.aiComparePauseOnTie = previous.pauseOnTie;
+      this.aiDebugEnabled = previous.logAiScores;
+      this.aiCompareEnabled = previous.compareEnabled;
+      this.aiComparePause = previous.comparePause;
+      this.aiComparePauseOnTie = previous.comparePauseOnTie;
+      this.compareEngines = previous.compareEngines;
+      this.updateAiDebug();
+      this.updateAiCompare();
+      this.replayDiagnosticActive = false;
+      this.replayDiagnosticStep = '';
+    }
+  }
+
+  cancelReplayDiagnostic(): void {
+    if (!this.replayDiagnosticActive) return;
+    this.replayDiagnosticAbort = true;
+    if (this.aiRunning) {
+      this.lastStopOrigin = 'user';
+      this.stopAi('stop');
+    }
+    this.replayDiagnosticStatus = 'Replay diagnostic cancelled.';
+  }
+
+  dismissReplayDiagnosticResult(): void {
+    this.replayDiagnosticResultActive = false;
+  }
+
+  async copyReplayDiagnosticResult(): Promise<void> {
+    if (!this.replayDiagnosticResultText) return;
+    try {
+      await navigator.clipboard.writeText(this.replayDiagnosticResultText);
+      this.spawnStatus = 'Replay diagnostic report copied to clipboard.';
+    } catch {
+      this.spawnStatus = 'Failed to copy replay diagnostic report.';
+    }
+  }
+
+  private getLatestDivergenceSeed(): { move: number; label: string } | null {
+    const raw = localStorage.getItem('aiDivergence');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      const move = Number(parsed?.move ?? NaN);
+      const label = String(parsed?.replayLabel ?? '').trim();
+      if (!Number.isFinite(move) || move < 2 || !label) return null;
+      return { move, label };
+    } catch {
+      return null;
+    }
+  }
+
+  private async runReplayDiagnosticPhase(
+    phase: 'non-strict' | 'strict',
+    strict: boolean
+  ): Promise<ReplayDiagnosticSnapshot> {
+    if (this.replayDiagnosticAbort) {
+      return {
+        phase,
+        stop: 'unknown',
+        moveCount: this.game.getMoveCountSnapshot(),
+        replayStopReason: this.game.getReplayStopReason(),
+      };
+    }
+    this.replayDiagnosticStep = `Running ${phase} diagnostic`;
+    this.replayDiagnosticStatus = `Preparing ${phase} replay @ N-1...`;
+    this.strictParityMode = strict;
+    this.replayStoppedEarly = false;
+    this.replayCompletedActive = false;
+    this.replayDivergedActive = false;
+    this.replayDivergedMessage = '';
+    await this.replayFromDivergenceCheckpoint();
+    if (this.replayDiagnosticAbort) {
+      return {
+        phase,
+        stop: 'unknown',
+        moveCount: this.game.getMoveCountSnapshot(),
+        replayStopReason: this.game.getReplayStopReason(),
+      };
+    }
+    if (!this.aiRunning) {
+      this.toggleAiRun();
+    }
+    this.replayDiagnosticStatus = `Waiting for ${phase} stop condition...`;
+    const baselineSignature = this.getLatestDivergenceSignatureForDiagnostic();
+    const stop = await this.waitForReplayDiagnosticStop(180000, baselineSignature);
+    const latest = this.getLatestDivergenceSnapshotForDiagnostic();
+    return {
+      phase,
+      stop,
+      moveCount: this.game.getMoveCountSnapshot(),
+      replayStopReason: this.game.getReplayStopReason(),
+      divergenceMove: latest?.move,
+      tsMove: latest?.tsMove,
+      replayMove: latest?.wasmMove,
+      tsDelta:
+        typeof latest?.tsReplayScoreDelta === 'number'
+          ? latest.tsReplayScoreDelta
+          : undefined,
+    };
+  }
+
+  private async waitForReplayDiagnosticStop(
+    timeoutMs: number,
+    baselineDivergenceSignature: string | null
+  ): Promise<ReplayDiagnosticSnapshot['stop']> {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (this.replayDiagnosticAbort) return 'unknown';
+      if (this.replayDivergedActive) return 'diverged';
+      if (
+        this.didDiagnosticTargetDivergeSinceSignature(baselineDivergenceSignature)
+      ) {
+        return 'diverged';
+      }
+      if (this.replayCompletedActive) return 'completed';
+      if (this.replayStoppedEarly) return 'stopped-early';
+      if (this.gameOverActive && !this.aiRunning) return 'game-over';
+      if (!this.aiRunning) return 'unknown';
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (this.aiRunning) {
+      this.lastStopOrigin = 'user';
+      this.stopAi('stop');
+    }
+    return 'timeout';
+  }
+
+  private getLatestDivergenceSnapshotForDiagnostic(): any | null {
+    const raw = localStorage.getItem('aiDivergence');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  private getLatestDivergenceSignatureForDiagnostic(): string | null {
+    const snapshot = this.getLatestDivergenceSnapshotForDiagnostic();
+    if (!snapshot) return null;
+    const created = Number(
+      snapshot?.createdAt ?? snapshot?.timestamp ?? snapshot?.capturedAt ?? NaN
+    );
+    if (Number.isFinite(created)) return `t:${created}`;
+    return JSON.stringify([
+      snapshot?.move ?? null,
+      snapshot?.replayLabel ?? null,
+      snapshot?.tsMove ?? null,
+      snapshot?.wasmMove ?? null,
+      snapshot?.tsReplayScoreDelta ?? null,
+    ]);
+  }
+
+  private didDiagnosticTargetDivergeSinceSignature(
+    baselineSignature: string | null
+  ): boolean {
+    const snapshot = this.getLatestDivergenceSnapshotForDiagnostic();
+    if (!snapshot) return false;
+
+    const targetMove = this.replayDiagnosticTargetMove;
+    const targetLabel = this.replayDiagnosticTargetLabel;
+    const snapshotMove = Number(snapshot?.move ?? NaN);
+    const snapshotLabel = String(snapshot?.replayLabel ?? '').trim();
+    if (
+      !Number.isFinite(targetMove) ||
+      !targetLabel ||
+      !Number.isFinite(snapshotMove) ||
+      snapshotMove !== targetMove ||
+      snapshotLabel !== targetLabel
+    ) {
+      return false;
+    }
+
+    const currentSignature = this.getLatestDivergenceSignatureForDiagnostic();
+    if (!currentSignature) return false;
+    if (!baselineSignature) return true;
+    return currentSignature !== baselineSignature;
+  }
+
+  private formatReplayDiagnosticReport(report: ReplayDiagnosticReport): string {
+    const lines = [
+      '---',
+      'Replay Diagnostic Report',
+      `Label: ${report.label}`,
+      `Target move: ${report.targetMove}`,
+      `Finished: ${new Date(report.finishedAt).toLocaleString()}`,
+      '',
+    ];
+    for (const snapshot of report.snapshots) {
+      lines.push(
+        `[${snapshot.phase}] stop=${snapshot.stop} move=${snapshot.moveCount} replayStopReason=${snapshot.replayStopReason ?? ''}`
+      );
+      if (typeof snapshot.divergenceMove === 'number') {
+        lines.push(
+          `  divergenceMove=${snapshot.divergenceMove} tsMove=${snapshot.tsMove ?? ''} replayMove=${snapshot.replayMove ?? ''} tsDelta=${typeof snapshot.tsDelta === 'number' ? snapshot.tsDelta.toFixed(3) : ''}`
+        );
+      }
+    }
+    lines.push('---');
+    return lines.join('\n');
   }
 
   private async fastForwardReplayToMove(targetMove: number): Promise<boolean> {
@@ -2518,7 +2816,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
               const shouldAdoptNoCacheDecision =
                 Number.isFinite(cachedGap) &&
                 Number.isFinite(noCacheReplaySupport) &&
-                cachedGap <= 64 &&
+                cachedGap <= 128 &&
                 noCacheReplaySupport >= 96;
               if (shouldAdoptNoCacheDecision) {
                 tsScores = tsScoresNoCacheDecision;
@@ -3533,11 +3831,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
         ? Date.now() - this.aiRunLastStartedAt
         : 0;
     const durationMs = this.aiRunAccumulatedMs + runningMs;
-    if (movesToLog <= 0) return 'skipped';
-
     const runMode =
       runModeOverride ??
       (this.lastRunMode === 'replay' ? 'replay' : this.lastRunMode || this.spawnMode);
+    const replayMovesSnapshot = this.game.getMoveCountSnapshot();
+    const effectiveMovesToLog =
+      runMode === 'replay' ? replayMovesSnapshot : movesToLog;
+    if (effectiveMovesToLog <= 0) return 'skipped';
     const loggedEngine = this.getLoggedEngine(runMode);
     const savedLabelForMode =
       runMode === 'replay' || runMode === 'record'
@@ -3552,14 +3852,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
       outcomeOverride ??
       (runMode === 'replay' &&
       replaySavedMoves > 0 &&
-      movesToLog >= replaySavedMoves
+      effectiveMovesToLog >= replaySavedMoves
         ? 'Consumed all moves'
         : undefined);
 
     const existing = this.runHistory.getRuns().find((run) => {
       if (
         run.score !== score ||
-        run.moves !== movesToLog ||
+        run.moves !== effectiveMovesToLog ||
         run.maxTile !== maxTile ||
         run.engine !== loggedEngine ||
         run.gameMode !== runMode
@@ -3573,6 +3873,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
     });
     if (existing) {
       const patch: Partial<RunSummary> = {};
+      if (runMode === 'replay') {
+        patch.timestamp = Date.now();
+      }
       if (derivedOutcome && existing.outcome !== derivedOutcome) {
         patch.outcome = derivedOutcome;
       }
@@ -3602,7 +3905,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
     const batchMeta = this.getBatchMetaForRun(runMode, reason);
     if (runMode === 'replay') {
-      if (!replaySavedMoves || movesToLog < replaySavedMoves) {
+      if (!replaySavedMoves || effectiveMovesToLog < replaySavedMoves) {
         return 'skipped';
       }
     }
@@ -3622,7 +3925,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       replayLabel: savedLabelForMode ? savedLabelForMode : undefined,
       savedId: savedIdForMode,
       score,
-      moves: movesToLog,
+      moves: effectiveMovesToLog,
       totalMoves,
       durationMs,
     });
