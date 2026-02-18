@@ -85,6 +85,18 @@
           </div>
         </div>
         <div class="ai-run-banner" *ngIf="replayDiagnosticActive || replayDiagnosticStatus">
+          <div>
+            Diagnostic state: {{ getReplayDiagnosticStateLabel() }}
+            <span *ngIf="replayDiagnosticPhase">
+              | phase: {{ replayDiagnosticPhase }}
+            </span>
+            <span *ngIf="replayDiagnosticTargetMove !== null">
+              | target: {{ replayDiagnosticTargetMove }}
+            </span>
+            <span *ngIf="replayDiagnosticCurrentMove !== null">
+              | move: {{ replayDiagnosticCurrentMove }}
+            </span>
+          </div>
           <div *ngIf="replayDiagnosticActive">
             Diagnostic running: {{ replayDiagnosticStep || 'initializing' }}
           </div>
@@ -94,7 +106,7 @@
           </div>
         </div>
         <details class="divergence-panel" [open]="divergenceBacklog.length > 0">
-          <summary class="collapse-summary">Divergence backlog ({{ divergenceBacklog.length }})</summary>
+          <summary class="collapse-summary">Divergence/tie backlog ({{ divergenceBacklog.length }})</summary>
           <div class="divergence-backlog">
             <div
               class="divergence-empty"
@@ -106,6 +118,9 @@
               <div class="divergence-entry-text">
                 <span class="divergence-entry-head">
                   <span class="divergence-label">{{ entry.label }}</span>
+                  <span class="divergence-state-badge">
+                    {{ getBacklogKindLabel(entry) }}
+                  </span>
                   <span class="divergence-state-badge" [class.investigating]="entry.status === 'investigating'">
                     {{ getBacklogStatusLabel(entry) }}
                   </span>
@@ -122,6 +137,14 @@
                   *ngIf="canReplayFromBacklogEntryCheckpoint(entry)"
                 >
                   Replay &#64; N-1
+                </button>
+                <button
+                  type="button"
+                  (click)="runReplayDiagnosticFromBacklogEntry(entry)"
+                  [disabled]="replayDiagnosticActive"
+                  *ngIf="canRunReplayDiagnosticForEntry(entry)"
+                >
+                  Run Diagnostic
                 </button>
                 <button type="button" (click)="markBacklogFixed(entry.label)">
                   Mark Fixed
@@ -255,7 +278,7 @@
               [disabled]="aiEngine === 'ts' && spawnMode === 'replay'"
             />
           </label>
-          <label class="ai-speed">
+          <label class="ai-speed" *ngIf="!(spawnMode === 'replay' && aiCompareEnabled)">
             Pause on tie
             <input
               type="checkbox"
@@ -269,6 +292,13 @@
               type="checkbox"
               [(ngModel)]="aiDebugEnabled"
               (change)="updateAiDebug()"
+            />
+          </label>
+          <label class="ai-speed" *ngIf="spawnMode === 'replay'">
+            Replay fast mode
+            <input
+              type="checkbox"
+              [(ngModel)]="replayFastMode"
             />
           </label>
           <div class="ai-spawn-actions">
@@ -353,6 +383,9 @@
           </div>
           <div class="ai-boost-status" *ngIf="replayProgressText">
             {{ replayProgressText }}
+          </div>
+          <div class="ai-boost-status" *ngIf="replayThroughputText">
+            {{ replayThroughputText }}
           </div>
           <div class="ai-boost-status" *ngIf="replaySavedMovesStatus">
             {{ replaySavedMovesStatus }}
