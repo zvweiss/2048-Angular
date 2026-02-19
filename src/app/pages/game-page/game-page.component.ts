@@ -1537,7 +1537,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   dismissReplayDiagnosticResult(): void {
-    this.replayDiagnosticResultActive = false;
+    this.clearReplayDiagnosticUiState(true, true);
   }
 
   async copyReplayDiagnosticResult(): Promise<void> {
@@ -1664,6 +1664,26 @@ export class GamePageComponent implements OnInit, OnDestroy {
     } catch {
       localStorage.removeItem(this.replayDiagnosticStatusStorageKey);
     }
+  }
+
+  private clearReplayDiagnosticUiState(
+    clearResult = false,
+    force = false
+  ): void {
+    if (this.replayDiagnosticActive && !force) return;
+    this.replayDiagnosticState = 'idle';
+    this.replayDiagnosticActive = false;
+    this.replayDiagnosticStep = '';
+    this.replayDiagnosticStatus = '';
+    this.replayDiagnosticPhase = '';
+    this.replayDiagnosticTargetMove = null;
+    this.replayDiagnosticCurrentMove = null;
+    this.replayDiagnosticTargetLabel = '';
+    if (clearResult) {
+      this.replayDiagnosticResultActive = false;
+      this.replayDiagnosticResultText = '';
+    }
+    localStorage.removeItem(this.replayDiagnosticStatusStorageKey);
   }
 
   getReplayDiagnosticStateLabel(): string {
@@ -1967,6 +1987,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   replayBacklogEntry(label: string): void {
+    this.clearReplayDiagnosticUiState(true);
     const baseLabel = this.getBacklogBaseLabel(label);
     if (!baseLabel) return;
     this.markBacklogInvestigating(baseLabel);
@@ -1991,6 +2012,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   async replayBacklogEntryCheckpoint(entry: DivergenceEntry): Promise<void> {
+    this.clearReplayDiagnosticUiState(true);
     const baseLabel = this.getBacklogBaseLabel(String(entry?.label ?? ''));
     if (!baseLabel) return;
     this.markBacklogInvestigating(baseLabel);
@@ -2260,6 +2282,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (this.suppressRecordExitPrompt) {
       this.suppressRecordExitPrompt = false;
     }
+    if (modeChanged) {
+      this.clearReplayDiagnosticUiState(true);
+    }
     if (this.spawnMode === 'record' && this.aiEngine !== 'wasm') {
       this.spawnMode = 'normal';
     }
@@ -2396,6 +2421,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.spawnStatus = 'Stop replay before changing Replay Recording.';
       return;
     }
+    this.clearReplayDiagnosticUiState(true);
     this.selectedReplayId = nextId;
     this.game.loadSavedSpawn(nextId);
     if (this.spawnMode === 'replay') {
