@@ -416,6 +416,13 @@ export class GamePageComponent implements OnInit, OnDestroy {
                 this.replayRunLoggedAtCompletion = true;
               }
             }
+            if (replayCompleted) {
+              const replayLabel = this.spawnLabel || this.game.getSpawnLabel();
+              this.clearReplayBacklogOnCompareCompletion(replayLabel);
+              this.replayCompletedMessage =
+                `Replay completed: ${runMoves} / ${savedMoves} moves consumed.`;
+              this.replayCompletedActive = true;
+            }
           } else if (!this.aiRunning) {
             this.ensureRunLoggedIfMissing('game-over');
           }
@@ -569,6 +576,20 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   dismissReplayCompleted(): void {
     this.replayCompletedActive = false;
+    this.replayCompletedMessage = '';
+    this.game.dismissGameOver();
+    this.gameOverActive = false;
+    this.gameOverDismissed = true;
+    this.stopAi('stop');
+    this.resetAiRunTrackingForNewGame();
+    this.game.startNewGame();
+    this.winFromAiRun = false;
+    this.applyDefaultAiConfig();
+    this.autoBoostStage = 0;
+    this.clearHint();
+    this.spawnMode = 'normal';
+    this.suppressModeChangeConfirm = true;
+    this.updateSpawnMode();
   }
 
   validateSavedSpawns(): void {
@@ -2077,6 +2098,17 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return removed;
   }
 
+  private clearReplayBacklogOnCompareCompletion(label: string): void {
+    if (!this.compareEngines) return;
+    const replayLabel = label.trim();
+    if (!replayLabel) return;
+    const removed = this.removeDivergenceEntriesForLabel(replayLabel);
+    if (removed <= 0) return;
+    this.spawnStatus =
+      `Replay compare completed. Cleared ${removed} backlog ` +
+      `entr${removed === 1 ? 'y' : 'ies'} for ${replayLabel}.`;
+  }
+
   private resolveReplayLabel(): string {
     if (this.spawnLabel) return this.spawnLabel;
     const gameLabel = this.game.getSpawnLabel();
@@ -2986,6 +3018,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
             this.replayRunLoggedAtCompletion = true;
           }
           if (completedReplay) {
+            this.clearReplayBacklogOnCompareCompletion(replayLabel);
             this.replayCompletedMessage =
               replayLogState === 'existing'
                 ? `Replay completed: ${runMoves} / ${savedMoves} moves consumed. This replay is already in Runs.`
@@ -3002,7 +3035,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.replayParityStatus = '';
           this.replaySavedMovesStatus = '';
           this.replayRunMovesStatus = '';
-          this.spawnStatus = '';
+          if (!(completedReplay && this.compareEngines)) {
+            this.spawnStatus = '';
+          }
           return;
         }
         const replayCompareActive =
@@ -3087,48 +3122,67 @@ export class GamePageComponent implements OnInit, OnDestroy {
             const tieScoreMap = this.toScoreMap(tsScores) ?? {};
             const tsSelectedScore = tieScoreMap[tsMove];
             const replayScore = tieScoreMap[replayMove];
+            const tieDelta =
+              typeof tsSelectedScore === 'number' && typeof replayScore === 'number'
+                ? tsSelectedScore - replayScore
+                : null;
             const tieDeltaText =
-              typeof tsSelectedScore === 'number' &&
-              typeof replayScore === 'number'
-                ? (tsSelectedScore - replayScore).toFixed(3)
-                : '';
+              tieDelta !== null ? tieDelta.toFixed(3) : '';
             const status =
               `Tie at move ${moveIndex}: ` +
               `engine=${this.aiEngine} ` +
               `best=${tsBest.join(', ')} | selected=${replayMove}` +
               (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
-            const tieHash = board.flat().join(',');
-            if (
-              this.lastTiePauseMove !== moveIndex ||
-              this.lastTiePauseHash !== tieHash
-            ) {
-              this.tiePauseStatus = status;
-              console.log(status);
+            const exactTieAccepted =
+              tieDelta !== null &&
+              Math.abs(tieDelta) <= 0.001 &&
+              bestMoves.has(replayMove);
+            if (exactTieAccepted) {
+              this.replayParityStatus =
+                `Replay tie accepted at move ${moveIndex} (selected=${replayMove}, tsDelta=${tieDeltaText}).`;
+              this.tiePauseStatus = '';
+              this.tiePaused = false;
               this.lastTiePauseMove = moveIndex;
-              this.lastTiePauseHash = tieHash;
-              this.tiePaused = true;
-              const replayLabel = this.resolveReplayLabel();
-              const savedMoves = this.game.getMoveLogLength();
-              this.replayParityStatus = `Replay tie at move ${moveIndex}`;
-              const note =
-                savedMoves > 0
-                  ? `Replay tie at move ${moveIndex}/${savedMoves} | best=${tsBest.join(
-                      ','
-                    )} | replay=${replayMove}` +
-                    (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '')
-                  : `Replay tie at move ${moveIndex} | best=${tsBest.join(
-                      ','
-                    )} | replay=${replayMove}` +
-                    (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
-              this.addDivergenceBacklog(replayLabel, note);
-              this.moveFixedToBacklog(replayLabel, note);
-              this.spawnStatus =
-                savedMoves > 0
-                  ? `Replay tie detected: ${moveIndex} / ${savedMoves}.`
-                  : `Replay tie detected at move ${moveIndex}.`;
-              this.lastStopOrigin = 'tie';
-              this.stopAi('stop');
-              return;
+              this.lastTiePauseHash = board.flat().join(',');
+              this.resumeFromTiePause = false;
+              this.skipTiePauseOnce = false;
+              if (this.aiDebugEnabled) {
+                console.info(status + ' -> accepted');
+              }
+            } else {
+              const tieHash = board.flat().join(',');
+              if (
+                this.lastTiePauseMove !== moveIndex ||
+                this.lastTiePauseHash !== tieHash
+              ) {
+                this.tiePauseStatus = status;
+                console.log(status);
+                this.lastTiePauseMove = moveIndex;
+                this.lastTiePauseHash = tieHash;
+                this.tiePaused = true;
+                const replayLabel = this.resolveReplayLabel();
+                const savedMoves = this.game.getMoveLogLength();
+                this.replayParityStatus = `Replay tie at move ${moveIndex}`;
+                const note =
+                  savedMoves > 0
+                    ? `Replay tie at move ${moveIndex}/${savedMoves} | best=${tsBest.join(
+                        ','
+                      )} | replay=${replayMove}` +
+                      (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '')
+                    : `Replay tie at move ${moveIndex} | best=${tsBest.join(
+                        ','
+                      )} | replay=${replayMove}` +
+                      (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
+                this.addDivergenceBacklog(replayLabel, note);
+                this.moveFixedToBacklog(replayLabel, note);
+                this.spawnStatus =
+                  savedMoves > 0
+                    ? `Replay tie detected: ${moveIndex} / ${savedMoves}.`
+                    : `Replay tie detected at move ${moveIndex}.`;
+                this.lastStopOrigin = 'tie';
+                this.stopAi('stop');
+                return;
+              }
             }
           }
           if (!replayMatch && tsMove && tsMove !== replayMove) {
