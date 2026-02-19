@@ -1484,7 +1484,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         (snapshot) => snapshot.stop === 'passed-checkpoint'
       );
       this.replayDiagnosticStatus = fullyPassed
-        ? 'Replay diagnostic completed: checkpoint passed in non-strict + strict.'
+        ? 'Replay @ N-1 diagnostic completed: checkpoint passed in non-strict + strict. You can Mark Fixed for this backlog item.'
         : 'Replay diagnostic completed.';
       this.persistReplayDiagnosticStatus();
     } catch (error) {
@@ -3122,7 +3122,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const replayTie = bestMoves.size > 1 && replayWithinThreshold;
           if (!skipTieChecks && replayTie && tsMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
-            if (moveIndex < this.replayTieBacklogMinMove) {
+            if (tsMove === replayMove) {
+              this.replayParityStatus =
+                `Replay tie accepted at move ${moveIndex} (selected ${replayMove}).`;
+              this.tiePauseStatus = '';
+              this.tiePaused = false;
+              this.lastTiePauseMove = moveIndex;
+              this.lastTiePauseHash = board.flat().join(',');
+            } else if (moveIndex < this.replayTieBacklogMinMove) {
               this.replayParityStatus =
                 `Replay tie at move ${moveIndex} ignored (bootstrap policy < ${this.replayTieBacklogMinMove}).`;
               this.tiePauseStatus = '';

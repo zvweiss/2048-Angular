@@ -162,16 +162,19 @@
 
 .divergence-entry {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
   margin-top: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .divergence-entry-text {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
 .divergence-entry-head {
@@ -216,6 +219,10 @@
 .divergence-entry-actions {
   display: flex;
   gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 1 1 220px;
+  max-width: 100%;
 }
 
 .divergence-entry-actions button {
@@ -226,6 +233,15 @@
   border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
+}
+
+@media (max-width: 520px) {
+  .divergence-entry-actions {
+    justify-content: flex-start;
+  }
 }
 
 .diagnostic-report {
