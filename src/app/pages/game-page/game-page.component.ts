@@ -260,6 +260,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
   // Strict mode still allows very small near-ties if WASM also considers both moves top-tier.
   private strictReplayNearTieDelta = 12;
   private strictReplayWasmTopTolerance = 24;
+  // Strict tie acceptance: allow replay-selected tie move when TS delta stays within this cap.
+  private strictReplayTieAcceptDelta = 12;
   // Non-strict compare: allow modest near-tie differences before flagging divergence.
   private replayNonStrictDelta = 16;
   private compareEngines = false;
@@ -3161,9 +3163,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
               (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
             const exactTieAccepted =
               tieDelta !== null &&
-              Math.abs(tieDelta) <= 0.001 &&
+              Math.abs(tieDelta) <= this.strictReplayTieAcceptDelta &&
               bestMoves.has(replayMove);
-            if (exactTieAccepted) {
+            const tieAccepted = strictReplay
+              ? exactTieAccepted
+              : bestMoves.has(replayMove);
+            if (tieAccepted) {
               this.replayParityStatus =
                 `Replay tie accepted at move ${moveIndex} (selected=${replayMove}, tsDelta=${tieDeltaText}).`;
               this.tiePauseStatus = '';

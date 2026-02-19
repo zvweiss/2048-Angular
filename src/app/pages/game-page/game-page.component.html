@@ -84,7 +84,7 @@
             </button>
           </div>
         </div>
-        <div class="ai-run-banner" *ngIf="replayDiagnosticActive || replayDiagnosticStatus">
+        <div class="ai-run-banner" *ngIf="replayDiagnosticActive">
           <div>
             Diagnostic state: {{ getReplayDiagnosticStateLabel() }}
             <span *ngIf="replayDiagnosticPhase">

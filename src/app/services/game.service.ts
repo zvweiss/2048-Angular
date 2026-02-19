@@ -50,6 +50,7 @@ export class GameService {
 
   private cleanupNoticeSubject = new BehaviorSubject<string | null>(null);
   cleanupNotice$ = this.cleanupNoticeSubject.asObservable();
+  private lastCleanupNoticeSignature: string | null = null;
 
   private gameOverSubject = new BehaviorSubject<boolean>(false);
   gameOver$ = this.gameOverSubject.asObservable();
@@ -599,14 +600,24 @@ export class GameService {
     const recordLabels = this.getRecordLabelsFromHistory();
     const divergenceLabels = this.getDivergenceLabelsFromStorage();
     const allowedLabels = new Set([...recordLabels, ...divergenceLabels]);
-    const unlinkedSaved = this.savedSpawns.filter(
-      (entry) => !allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
-    ).length;
-    const unlinkedArchive = this.recordSpawnsArchive.filter(
-      (entry) => !allowedLabels.has(String(entry.label ?? '').trim().toLowerCase())
-    ).length;
+    const unlinkedSavedLabels = this.savedSpawns
+      .map((entry) => String(entry.label ?? '').trim().toLowerCase())
+      .filter((label) => label && !allowedLabels.has(label));
+    const unlinkedArchiveLabels = this.recordSpawnsArchive
+      .map((entry) => String(entry.label ?? '').trim().toLowerCase())
+      .filter((label) => label && !allowedLabels.has(label));
+    const unlinkedSaved = unlinkedSavedLabels.length;
+    const unlinkedArchive = unlinkedArchiveLabels.length;
 
     if (unlinkedSaved > 0 || unlinkedArchive > 0) {
+      const signature = JSON.stringify({
+        saved: [...new Set(unlinkedSavedLabels)].sort(),
+        archive: [...new Set(unlinkedArchiveLabels)].sort(),
+      });
+      if (signature === this.lastCleanupNoticeSignature) {
+        return;
+      }
+      this.lastCleanupNoticeSignature = signature;
       const parts: string[] = [];
       if (unlinkedSaved > 0) {
         parts.push(
@@ -622,7 +633,9 @@ export class GameService {
       this.cleanupNoticeSubject.next(
         `Detected ${detail} not referenced by run history. Kept for safety.`
       );
+      return;
     }
+    this.lastCleanupNoticeSignature = null;
   }
 
   private normalizeSavedSpawnIds(): void {
