@@ -275,14 +275,6 @@
               [disabled]="aiEngine === 'ts' && spawnMode === 'replay'"
             />
           </label>
-          <label class="ai-speed" *ngIf="!(spawnMode === 'replay' && aiCompareEnabled)">
-            Pause on tie
-            <input
-              type="checkbox"
-              [(ngModel)]="aiComparePauseOnTie"
-              (change)="updateAiCompare()"
-            />
-          </label>
           <label class="ai-speed">
             Log AI scores
             <input

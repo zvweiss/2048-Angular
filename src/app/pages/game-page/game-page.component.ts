@@ -174,7 +174,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private replayRunLoggedAtCompletion = false;
   private lastReplayUiRefreshAt = 0;
   private readonly replayUiRefreshThrottleMs = 150;
-  private readonly replayTieBacklogMinMove = 128;
   gameOverMessage = 'No more valid moves. Try again!';
   replayStoppedEarly = false;
   replayStoppedEarlyMessage = '';
@@ -236,7 +235,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
     aiEngine: 'ts' | 'wasm';
     aiCompareEnabled: boolean;
     aiComparePause: boolean;
-    aiComparePauseOnTie: boolean;
     compareEngines: boolean;
     pauseOnDivergence: boolean;
     parityMode: boolean;
@@ -268,7 +266,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private pauseOnDivergence = false;
   aiCompareEnabled = false;
   aiComparePause = false;
-  aiComparePauseOnTie = false;
   aiDebugEnabled = false;
   replayFastMode = true;
   parityMode = true;
@@ -294,7 +291,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
     (window as any).setAiCompare = (enabled: boolean, pause = false) => {
       this.aiCompareEnabled = Boolean(enabled);
       this.aiComparePause = Boolean(pause);
-      this.aiComparePauseOnTie = false;
       this.compareEngines = this.aiCompareEnabled;
       this.pauseOnDivergence = this.aiComparePause;
       return `AI compare ${this.compareEngines ? 'enabled' : 'disabled'}${
@@ -928,7 +924,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (this.aiEngine === 'wasm') {
       this.aiCompareEnabled = false;
       this.aiComparePause = false;
-      this.aiComparePauseOnTie = false;
       this.compareEngines = false;
       this.pauseOnDivergence = this.aiComparePause;
     }
@@ -1429,10 +1424,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const previous = {
       compareEnabled: this.aiCompareEnabled,
       comparePause: this.aiComparePause,
-      comparePauseOnTie: this.aiComparePauseOnTie,
       compareEngines: this.compareEngines,
       strictParityMode: this.strictParityMode,
-      pauseOnTie: this.aiComparePauseOnTie,
       logAiScores: this.aiDebugEnabled,
     };
     this.replayDiagnosticActive = true;
@@ -1453,11 +1446,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
         this.lastStopOrigin = 'user';
         this.stopAi('stop');
       }
-      this.aiComparePauseOnTie = false;
       this.aiDebugEnabled = true;
       this.aiCompareEnabled = true;
       this.aiComparePause = false;
-      this.aiComparePauseOnTie = false;
       this.compareEngines = true;
       this.updateAiDebug();
       this.updateAiCompare();
@@ -1497,11 +1488,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.replayDiagnosticTargetLabel = '';
       this.replayDiagnosticTargetMove = null;
       this.strictParityMode = previous.strictParityMode;
-      this.aiComparePauseOnTie = previous.pauseOnTie;
       this.aiDebugEnabled = previous.logAiScores;
       this.aiCompareEnabled = previous.compareEnabled;
       this.aiComparePause = previous.comparePause;
-      this.aiComparePauseOnTie = previous.comparePauseOnTie;
       this.compareEngines = previous.compareEngines;
       this.updateAiDebug();
       this.updateAiCompare();
@@ -2196,7 +2185,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
         aiEngine: this.aiEngine,
         aiCompareEnabled: this.aiCompareEnabled,
         aiComparePause: this.aiComparePause,
-        aiComparePauseOnTie: this.aiComparePauseOnTie,
         compareEngines: this.compareEngines,
         pauseOnDivergence: this.pauseOnDivergence,
         parityMode: this.parityMode,
@@ -2301,7 +2289,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
         // Safety default while stabilizing replay startup: start replay with compare OFF.
         this.aiCompareEnabled = false;
         this.aiComparePause = false;
-        this.aiComparePauseOnTie = false;
         this.compareEngines = false;
         this.pauseOnDivergence = false;
         this.parityMode = true;
@@ -2612,7 +2599,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.aiEngine = snapshot.aiEngine;
       this.aiCompareEnabled = snapshot.aiCompareEnabled;
       this.aiComparePause = snapshot.aiComparePause;
-      this.aiComparePauseOnTie = snapshot.aiComparePauseOnTie;
       this.compareEngines = snapshot.compareEngines;
       this.pauseOnDivergence = snapshot.pauseOnDivergence;
       this.parityMode = snapshot.parityMode;
@@ -2729,7 +2715,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
         this.aiEngine = snapshot.aiEngine;
         this.aiCompareEnabled = snapshot.aiCompareEnabled;
         this.aiComparePause = snapshot.aiComparePause;
-        this.aiComparePauseOnTie = snapshot.aiComparePauseOnTie;
         this.compareEngines = snapshot.compareEngines;
         this.pauseOnDivergence = snapshot.pauseOnDivergence;
         this.parityMode = snapshot.parityMode;
@@ -2951,30 +2936,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (this.resumeFromTiePause) {
           this.resumeFromTiePause = false;
         }
-        if (!skipTieChecks && this.aiEngine === 'wasm' && this.aiComparePauseOnTie) {
-          const wasmScores = await this.ai.getWasmScores(board);
-          const wasmBest = this.getBestMoveSet(wasmScores);
-          const moveIndex = this.game.getMoveCountSnapshot();
-          const tieHash = board.flat().join(',');
-          if (
-            wasmBest.size > 1 &&
-            (this.lastTiePauseMove !== moveIndex ||
-              this.lastTiePauseHash !== tieHash)
-          ) {
-            const status =
-              `Tie at move ${moveIndex}: ` +
-              `engine=wasm best=${[...wasmBest].join(', ')} | selected=pending`;
-            this.tiePauseStatus = status;
-            console.log(status);
-            this.lastTiePauseMove = moveIndex;
-            this.lastTiePauseHash = tieHash;
-            this.tiePaused = true;
-            this.resumeFromTiePause = true;
-            this.lastStopOrigin = 'tie';
-            this.stopAi('stop');
-            return;
-          }
-        }
         const replayMove = this.game.getReplayMove();
         if (!replayMove) {
           const replayLabel = this.spawnLabel || this.game.getSpawnLabel();
@@ -3122,68 +3083,52 @@ export class GamePageComponent implements OnInit, OnDestroy {
           const replayTie = bestMoves.size > 1 && replayWithinThreshold;
           if (!skipTieChecks && replayTie && tsMove) {
             const moveIndex = this.game.getMoveCountSnapshot();
-            if (tsMove === replayMove) {
-              this.replayParityStatus =
-                `Replay tie accepted at move ${moveIndex} (selected ${replayMove}).`;
-              this.tiePauseStatus = '';
-              this.tiePaused = false;
+            const tsBest = [...bestMoves];
+            const tieScoreMap = this.toScoreMap(tsScores) ?? {};
+            const tsSelectedScore = tieScoreMap[tsMove];
+            const replayScore = tieScoreMap[replayMove];
+            const tieDeltaText =
+              typeof tsSelectedScore === 'number' &&
+              typeof replayScore === 'number'
+                ? (tsSelectedScore - replayScore).toFixed(3)
+                : '';
+            const status =
+              `Tie at move ${moveIndex}: ` +
+              `engine=${this.aiEngine} ` +
+              `best=${tsBest.join(', ')} | selected=${replayMove}` +
+              (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
+            const tieHash = board.flat().join(',');
+            if (
+              this.lastTiePauseMove !== moveIndex ||
+              this.lastTiePauseHash !== tieHash
+            ) {
+              this.tiePauseStatus = status;
+              console.log(status);
               this.lastTiePauseMove = moveIndex;
-              this.lastTiePauseHash = board.flat().join(',');
-            } else if (moveIndex < this.replayTieBacklogMinMove) {
-              this.replayParityStatus =
-                `Replay tie at move ${moveIndex} ignored (bootstrap policy < ${this.replayTieBacklogMinMove}).`;
-              this.tiePauseStatus = '';
-              this.tiePaused = false;
-              this.lastTiePauseMove = moveIndex;
-              this.lastTiePauseHash = board.flat().join(',');
-            } else {
-              const tsBest = [...bestMoves];
-              const tieScoreMap = this.toScoreMap(tsScores) ?? {};
-              const tsSelectedScore = tieScoreMap[tsMove];
-              const replayScore = tieScoreMap[replayMove];
-              const tieDeltaText =
-                typeof tsSelectedScore === 'number' &&
-                typeof replayScore === 'number'
-                  ? (tsSelectedScore - replayScore).toFixed(3)
-                  : '';
-              const status =
-                `Tie at move ${moveIndex}: ` +
-                `engine=${this.aiEngine} ` +
-                `best=${tsBest.join(', ')} | selected=${replayMove}` +
-                (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
-              const tieHash = board.flat().join(',');
-              if (
-                this.lastTiePauseMove !== moveIndex ||
-                this.lastTiePauseHash !== tieHash
-              ) {
-                this.tiePauseStatus = status;
-                console.log(status);
-                this.lastTiePauseMove = moveIndex;
-                this.lastTiePauseHash = tieHash;
-                this.tiePaused = true;
-                const replayLabel = this.resolveReplayLabel();
-                const savedMoves = this.game.getMoveLogLength();
-                this.replayParityStatus = `Replay tie at move ${moveIndex}`;
-                const note =
-                  savedMoves > 0
-                    ? `Replay tie at move ${moveIndex}/${savedMoves} | best=${tsBest.join(
-                        ','
-                      )} | replay=${replayMove}` +
-                      (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '')
-                    : `Replay tie at move ${moveIndex} | best=${tsBest.join(
-                        ','
-                      )} | replay=${replayMove}` +
-                      (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
-                this.addDivergenceBacklog(replayLabel, note);
-                this.moveFixedToBacklog(replayLabel, note);
-                this.spawnStatus =
-                  savedMoves > 0
-                    ? `Replay tie detected: ${moveIndex} / ${savedMoves}.`
-                    : `Replay tie detected at move ${moveIndex}.`;
-                this.lastStopOrigin = 'tie';
-                this.stopAi('stop');
-                return;
-              }
+              this.lastTiePauseHash = tieHash;
+              this.tiePaused = true;
+              const replayLabel = this.resolveReplayLabel();
+              const savedMoves = this.game.getMoveLogLength();
+              this.replayParityStatus = `Replay tie at move ${moveIndex}`;
+              const note =
+                savedMoves > 0
+                  ? `Replay tie at move ${moveIndex}/${savedMoves} | best=${tsBest.join(
+                      ','
+                    )} | replay=${replayMove}` +
+                    (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '')
+                  : `Replay tie at move ${moveIndex} | best=${tsBest.join(
+                      ','
+                    )} | replay=${replayMove}` +
+                    (tieDeltaText ? ` | tsDelta=${tieDeltaText}` : '');
+              this.addDivergenceBacklog(replayLabel, note);
+              this.moveFixedToBacklog(replayLabel, note);
+              this.spawnStatus =
+                savedMoves > 0
+                  ? `Replay tie detected: ${moveIndex} / ${savedMoves}.`
+                  : `Replay tie detected at move ${moveIndex}.`;
+              this.lastStopOrigin = 'tie';
+              this.stopAi('stop');
+              return;
             }
           }
           if (!replayMatch && tsMove && tsMove !== replayMove) {
@@ -3433,36 +3378,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
             console.log('Saved divergence snapshot to localStorage (aiDivergences).');
           }
           const moveIndex = this.game.getMoveCountSnapshot();
-          if (isTie && this.aiComparePauseOnTie && primary) {
-                const tsBest = [...this.getCompareBestMoveSet(tsScores)];
-                const status = this.compareEngines
-                  ? `Tie at move ${moveIndex}: ` +
-                  `TS best=${tsBest.join(', ')} | WASM best=${[
-                    ...this.getCompareBestMoveSet(wasmScores),
-                  ].join(', ')} | selected=${primary}`
-                  : `Tie at move ${moveIndex}: ` +
-                  `engine=${this.aiEngine} ` +
-                  `best=${tsBest.join(', ')} | selected=${primary}`;
-            const tieHash = board.flat().join(',');
-            if (
-              this.skipTiePauseOnce &&
-              this.lastTiePauseMove === moveIndex &&
-              this.lastTiePauseHash === tieHash
-            ) {
-              this.skipTiePauseOnce = false;
-            } else if (
-              this.lastTiePauseMove !== moveIndex ||
-              this.lastTiePauseHash !== tieHash
-            ) {
-              this.tiePauseStatus = status;
-              console.log(status);
-              this.lastTiePauseMove = moveIndex;
-              this.lastTiePauseHash = tieHash;
-              this.tiePaused = true;
-              this.stopAi('stop');
-              return;
-            }
-          }
           if (this.pauseOnDivergence && !isTie) {
             const moveIndex = this.game.getMoveCountSnapshot();
             const otherEngine = this.aiEngine === 'ts' ? 'wasm' : 'ts';
@@ -3482,29 +3397,6 @@ export class GamePageComponent implements OnInit, OnDestroy {
           }
         }
       } else {
-        if (this.aiEngine === 'wasm' && this.aiComparePauseOnTie) {
-          const wasmScores = await this.ai.getWasmScores(board);
-          const wasmBest = this.getCompareBestMoveSet(wasmScores);
-          const moveIndex = this.game.getMoveCountSnapshot();
-          const tieHash = board.flat().join(',');
-          if (
-            wasmBest.size > 1 &&
-            (this.lastTiePauseMove !== moveIndex ||
-              this.lastTiePauseHash !== tieHash)
-          ) {
-            const status =
-              `Tie at move ${moveIndex}: ` +
-              `engine=wasm best=${[...wasmBest].join(', ')} | selected=pending`;
-            this.tiePauseStatus = status;
-            console.log(status);
-            this.lastTiePauseMove = moveIndex;
-            this.lastTiePauseHash = tieHash;
-            this.tiePaused = true;
-            this.resumeFromTiePause = true;
-            this.stopAi('stop');
-            return;
-          }
-        }
         nextMove = await this.ai.getMove(board);
       }
       if (this.aiEngine === 'ts' && nextMove && cycleDetected) {
