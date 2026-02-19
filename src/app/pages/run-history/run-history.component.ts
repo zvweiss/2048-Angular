@@ -11,6 +11,7 @@ import { GameService } from '../../services/game.service';
 
 type SortKey =
   | 'timestamp'
+  | 'kind'
   | 'score'
   | 'maxTile'
   | 'moves'
@@ -45,6 +46,7 @@ export class RunHistoryComponent implements OnInit {
   readonly boundaryTile = 32768;
   readonly sortKeyOptions: { key: SortKey; label: string }[] = [
     { key: 'timestamp', label: 'Date/Time' },
+    { key: 'kind', label: 'Kind' },
     { key: 'score', label: 'Score' },
     { key: 'maxTile', label: 'Max Tile' },
     { key: 'engine', label: 'Engine' },
@@ -78,11 +80,15 @@ export class RunHistoryComponent implements OnInit {
   }
 
   get tsRuns(): RunSummary[] {
-    return this.runs.filter((run) => run.engine === 'ts');
+    return this.runs.filter(
+      (run) => run.engine === 'ts' && run.kind !== 'diagnostic'
+    );
   }
 
   get wasmRuns(): RunSummary[] {
-    return this.runs.filter((run) => run.engine === 'wasm');
+    return this.runs.filter(
+      (run) => run.engine === 'wasm' && run.kind !== 'diagnostic'
+    );
   }
 
 
@@ -97,6 +103,7 @@ export class RunHistoryComponent implements OnInit {
     const rows = this.filterRunsWithTopTiles(this.history.getRuns())
       .map((run) => ({
         timestamp: this.formatTimestamp(run.timestamp),
+        kind: this.getKindDisplay(run),
         reason: run.reason,
         score: run.score,
         maxTile: run.maxTile,
@@ -223,6 +230,10 @@ export class RunHistoryComponent implements OnInit {
 
   formatGameMode(mode?: RunSummary['gameMode']): string {
     return mode ?? 'normal';
+  }
+
+  getKindDisplay(run: RunSummary): 'run' | 'diagnostic' {
+    return run.kind === 'diagnostic' ? 'diagnostic' : 'run';
   }
 
   getBatchDisplay(run: RunSummary): string {
@@ -445,6 +456,8 @@ export class RunHistoryComponent implements OnInit {
     switch (key) {
       case 'engine':
         return run.engine ?? '';
+      case 'kind':
+        return this.getKindDisplay(run);
       case 'gameMode':
         return run.gameMode ?? '';
       case 'batch':

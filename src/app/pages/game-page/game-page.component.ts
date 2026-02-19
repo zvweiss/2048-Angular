@@ -1492,6 +1492,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         snapshots,
       };
       this.replayDiagnosticResultText = this.formatReplayDiagnosticReport(report);
+      this.logReplayDiagnosticRun(report);
       this.replayDiagnosticResultActive = true;
       this.replayDiagnosticState = 'completed';
       const fullyPassed = snapshots.every(
@@ -1913,6 +1914,53 @@ export class GamePageComponent implements OnInit, OnDestroy {
     );
     lines.push('---');
     return lines.join('\n');
+  }
+
+  private logReplayDiagnosticRun(report: ReplayDiagnosticReport): void {
+    const snapshots = report.snapshots;
+    const maxMove = snapshots.reduce(
+      (acc, snapshot) => Math.max(acc, snapshot.moveCount),
+      0
+    );
+    const allPassed = snapshots.every(
+      (snapshot) => snapshot.stop === 'passed-checkpoint'
+    );
+    const nonStrict = snapshots.find((snapshot) => snapshot.phase === 'non-strict');
+    const strict = snapshots.find((snapshot) => snapshot.phase === 'strict');
+    const outcome = allPassed ? 'Diagnostic PASS' : 'Diagnostic NOT PASSED';
+    const noteParts: string[] = [];
+    if (nonStrict) noteParts.push(`non-strict:${nonStrict.stop}`);
+    if (strict) noteParts.push(`strict:${strict.stop}`);
+    const board = this.game.getBoardSnapshot();
+    const topTiles = [...board.flat()].sort((a, b) => b - a).slice(0, 4);
+    const maxTile = topTiles[0] ?? 0;
+    const savedId = this.game.getSavedSpawnIdByLabelCached?.(report.label);
+    const totalMovesRaw = this.game.getSavedSpawnMoveCountByLabel(report.label);
+    const totalMoves =
+      typeof totalMovesRaw === 'number' && Number.isFinite(totalMovesRaw)
+        ? totalMovesRaw
+        : 0;
+    this.runHistory.addRun({
+      id: `${Date.now()}-diagnostic`,
+      timestamp: report.finishedAt,
+      reason: 'stop',
+      kind: 'diagnostic',
+      outcome: noteParts.length ? `${outcome} (${noteParts.join(', ')})` : outcome,
+      maxTile,
+      topTiles,
+      engine: this.aiEngine,
+      gameMode: 'replay',
+      parity: true,
+      compare: true,
+      depth: this.aiDepthCap,
+      replayLabel: report.label,
+      savedId: typeof savedId === 'number' ? savedId : undefined,
+      score: this.game.getScoreSnapshot(),
+      moves: maxMove,
+      totalMoves: totalMoves > 0 ? totalMoves : maxMove,
+      durationMs: Math.max(0, report.finishedAt - report.startedAt),
+    });
+    this.runHistory.refreshRuns();
   }
 
   private async fastForwardReplayToMove(targetMove: number): Promise<boolean> {
@@ -3112,8 +3160,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
               const shouldAdoptNoCacheDecision =
                 Number.isFinite(cachedGap) &&
                 Number.isFinite(noCacheReplaySupport) &&
-                cachedGap <= 128 &&
-                noCacheReplaySupport >= 96;
+                cachedGap <= 192 &&
+                noCacheReplaySupport >= 48;
               if (shouldAdoptNoCacheDecision) {
                 tsScores = tsScoresNoCacheDecision;
                 tsMove = tsNoCacheMove;

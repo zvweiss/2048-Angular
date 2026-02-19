@@ -57,6 +57,12 @@
               {{ getSortIndicator('maxTile') }}
             </span>
           </th>
+          <th (click)="sortBy('kind')">
+            Kind
+            <span class="sort-indicator" *ngIf="getSortIndicator('kind')">
+              {{ getSortIndicator('kind') }}
+            </span>
+          </th>
           <th (click)="sortBy('engine')">
             Engine
             <span class="sort-indicator" *ngIf="getSortIndicator('engine')">
@@ -127,6 +133,7 @@
           <td>{{ formatTimestamp(run.timestamp) }}</td>
           <td class="num-col">{{ run.score }}</td>
           <td class="num-col">{{ run.maxTile }}</td>
+          <td>{{ getKindDisplay(run) }}</td>
           <td>{{ run.engine ?? '' }}</td>
           <td>{{ formatGameMode(run.gameMode) }}</td>
           <td>{{ getBatchDisplay(run) }}</td>

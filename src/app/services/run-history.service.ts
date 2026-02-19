@@ -5,6 +5,7 @@ export type RunSummary = {
   id: string;
   timestamp: number;
   reason: 'game-over' | 'stop' | 'win';
+  kind?: 'run' | 'diagnostic';
   outcome?: string;
   maxTile: number;
   topTiles?: number[];
@@ -54,7 +55,11 @@ export class RunHistoryService {
     if (!raw) return [];
     try {
       const parsed = JSON.parse(raw) as RunSummary[];
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((run) => ({
+        ...run,
+        kind: run.kind === 'diagnostic' ? 'diagnostic' : 'run',
+      }));
     } catch {
       return [];
     }
