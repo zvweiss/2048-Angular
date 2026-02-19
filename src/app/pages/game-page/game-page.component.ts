@@ -258,7 +258,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   divergenceFixed: DivergenceEntry[] = [];
   private readonly divergenceFixedKey = 'divergenceFixedLog';
   // Strict mode still allows very small near-ties if WASM also considers both moves top-tier.
-  private strictReplayNearTieDelta = 12;
+  private strictReplayNearTieDelta = 48;
   private strictReplayWasmTopTolerance = 24;
   // Strict tie acceptance: allow replay-selected tie move when TS delta stays within this cap.
   private strictReplayTieAcceptDelta = 12;
@@ -3161,7 +3161,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
                 Number.isFinite(cachedGap) &&
                 Number.isFinite(noCacheReplaySupport) &&
                 cachedGap <= 192 &&
-                noCacheReplaySupport >= 48;
+                noCacheReplaySupport >= 40;
               if (shouldAdoptNoCacheDecision) {
                 tsScores = tsScoresNoCacheDecision;
                 tsMove = tsNoCacheMove;
@@ -3175,12 +3175,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
               }
             }
           }
-          if (
-            strictReplay &&
-            !replayMatch &&
-            tsMove &&
-            tsMove !== replayMove
-          ) {
+          if (!replayMatch && tsMove && tsMove !== replayMove) {
             if (!tsScores.length) {
               tsScores = this.ai.getTsScores(board, tsDepthLimit);
             }
