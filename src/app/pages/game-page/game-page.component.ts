@@ -258,6 +258,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private readonly divergenceRefreshSeparator = ' — Refreshed ';
   divergenceFixed: DivergenceEntry[] = [];
   private readonly divergenceFixedKey = 'divergenceFixedLog';
+  private readonly divergencePinnedKey = 'aiDivergencePinned';
   // Strict mode still allows very small near-ties if WASM also considers both moves top-tier.
   private strictReplayNearTieDelta = 48;
   private strictReplayWasmTopTolerance = 24;
@@ -1019,11 +1020,70 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return this.replayDepthStatus || null;
   }
 
-  clearDivergences(): void {
-    localStorage.removeItem('aiDivergences');
-    localStorage.removeItem('aiDivergence');
+  clearDivergences(hard = false): void {
+    if (hard) {
+      localStorage.removeItem('aiDivergences');
+      localStorage.removeItem('aiDivergence');
+      localStorage.removeItem(this.divergencePinnedKey);
+    }
     this.divergenceStatus = '';
     this.divergenceDetails = '';
+  }
+
+  private persistDivergenceSnapshot(snapshot: Record<string, unknown>): void {
+    const replayLabel = String(
+      snapshot['replayLabel'] ?? this.spawnLabel ?? this.game.getSpawnLabel() ?? ''
+    ).trim();
+    const payload = {
+      ...snapshot,
+      replayLabel,
+      createdAt: Date.now(),
+    };
+    const existing = localStorage.getItem('aiDivergences');
+    const list = existing ? JSON.parse(existing) : [];
+    list.push(payload);
+    localStorage.setItem('aiDivergences', JSON.stringify(list));
+    localStorage.setItem('aiDivergence', JSON.stringify(payload));
+    localStorage.setItem(this.divergencePinnedKey, JSON.stringify(payload));
+    if (this.aiDebugEnabled) {
+      console.log('Saved divergence snapshot to localStorage (aiDivergences).');
+    }
+  }
+
+  private getLatestDivergenceSnapshot(
+    labelFilter?: string,
+    moveFilter?: number | null
+  ): any | null {
+    const normalizedLabel = labelFilter?.trim() ?? '';
+    const normalizedMove = Number(moveFilter ?? NaN);
+    const candidates: any[] = [];
+    const pushRaw = (raw: string | null) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed) candidates.push(parsed);
+      } catch {}
+    };
+    pushRaw(localStorage.getItem('aiDivergence'));
+    pushRaw(localStorage.getItem(this.divergencePinnedKey));
+    try {
+      const many = JSON.parse(localStorage.getItem('aiDivergences') || '[]');
+      if (Array.isArray(many)) {
+        for (const item of many) {
+          if (item) candidates.push(item);
+        }
+      }
+    } catch {}
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      const entry = candidates[i];
+      const move = Number(entry?.move ?? NaN);
+      const label = String(entry?.replayLabel ?? '').trim();
+      if (!Number.isFinite(move)) continue;
+      if (normalizedLabel && label !== normalizedLabel) continue;
+      if (Number.isFinite(normalizedMove) && move !== normalizedMove) continue;
+      return entry;
+    }
+    return null;
   }
 
   private loadDivergenceBacklog(): void {
@@ -1232,13 +1292,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   async copyDivergenceSnapshot(): Promise<void> {
-    const raw = localStorage.getItem('aiDivergence');
-    if (!raw) {
+    const snapshot = this.getLatestDivergenceSnapshot();
+    if (!snapshot) {
       this.spawnStatus = 'No divergence snapshot found.';
       return;
     }
     try {
-      const snapshot = JSON.parse(raw);
       const payload = {
         label: this.spawnLabel || this.game.getSpawnLabel() || '',
         createdAt: new Date().toISOString(),
@@ -1338,41 +1397,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   canReplayFromDivergenceCheckpoint(): boolean {
-    const raw = localStorage.getItem('aiDivergence');
-    if (!raw) return false;
-    try {
-      const parsed = JSON.parse(raw);
-      return Number.isFinite(parsed?.move) && Number(parsed.move) >= 2;
-    } catch {
-      return false;
-    }
+    const parsed = this.getLatestDivergenceSnapshot();
+    return Number.isFinite(parsed?.move) && Number(parsed.move) >= 2;
   }
 
   canReplayFromDivergenceCheckpointForLabel(label: string): boolean {
-    const raw = localStorage.getItem('aiDivergence');
-    if (!raw) return false;
-    try {
-      const parsed = JSON.parse(raw);
-      const move = Number(parsed?.move ?? NaN);
-      const replayLabel = String(parsed?.replayLabel ?? '').trim();
-      const base = this.getBacklogBaseLabel(label);
-      return Number.isFinite(move) && move >= 2 && !!base && replayLabel === base;
-    } catch {
-      return false;
-    }
+    const base = this.getBacklogBaseLabel(label);
+    if (!base) return false;
+    const parsed = this.getLatestDivergenceSnapshot(base);
+    const move = Number(parsed?.move ?? NaN);
+    const replayLabel = String(parsed?.replayLabel ?? '').trim();
+    return Number.isFinite(move) && move >= 2 && replayLabel === base;
   }
 
   async replayFromDivergenceCheckpoint(): Promise<void> {
-    const raw = localStorage.getItem('aiDivergence');
-    if (!raw) {
+    const snapshot = this.getLatestDivergenceSnapshot();
+    if (!snapshot) {
       this.spawnStatus = 'No divergence snapshot found.';
-      return;
-    }
-    let snapshot: { move?: number; replayLabel?: string } | null = null;
-    try {
-      snapshot = JSON.parse(raw);
-    } catch {
-      this.spawnStatus = 'Invalid divergence snapshot.';
       return;
     }
 
@@ -1570,43 +1611,14 @@ export class GamePageComponent implements OnInit, OnDestroy {
     labelFilter?: string,
     moveFilter?: number | null
   ): { move: number; label: string } | null {
-    const normalizedLabel = labelFilter?.trim() ?? '';
-    const normalizedMove = Number(moveFilter ?? NaN);
-    let many: any[] = [];
-    try {
-      const parsedMany = JSON.parse(localStorage.getItem('aiDivergences') || '[]');
-      many = Array.isArray(parsedMany) ? parsedMany : [];
-    } catch {
-      many = [];
-    }
-    const all = [
-      localStorage.getItem('aiDivergence'),
-      ...many.map((entry: any) => JSON.stringify(entry)),
-    ]
-      .filter(Boolean)
-      .map((raw) => {
-        try {
-          return JSON.parse(String(raw));
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-
-    const match = all
-      .reverse()
-      .find((entry: any) => {
-        const move = Number(entry?.move ?? NaN);
-        const label = String(entry?.replayLabel ?? '').trim();
-        if (!Number.isFinite(move) || move < 2 || !label) return false;
-        if (normalizedLabel && label !== normalizedLabel) return false;
-        if (Number.isFinite(normalizedMove) && move !== normalizedMove) return false;
-        return true;
-      });
+    const match = this.getLatestDivergenceSnapshot(labelFilter, moveFilter);
     if (!match) return null;
+    const move = Number(match.move);
+    const label = String(match.replayLabel ?? '').trim();
+    if (!Number.isFinite(move) || move < 2 || !label) return null;
     return {
-      move: Number(match.move),
-      label: String(match.replayLabel).trim(),
+      move,
+      label,
     };
   }
 
@@ -1840,13 +1852,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   private getLatestDivergenceSnapshotForDiagnostic(): any | null {
-    const raw = localStorage.getItem('aiDivergence');
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
+    return this.getLatestDivergenceSnapshot();
   }
 
   private getLatestDivergenceSignatureForDiagnostic(): string | null {
@@ -2109,26 +2115,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private findLatestDivergenceMoveForLabel(label: string): number | null {
     const normalized = label.trim().toLowerCase();
     if (!normalized) return null;
-    const candidates: Array<{ move?: number; replayLabel?: string }> = [];
-    try {
-      const one = JSON.parse(localStorage.getItem('aiDivergence') || 'null');
-      if (one) candidates.push(one);
-    } catch {}
-    try {
-      const many = JSON.parse(localStorage.getItem('aiDivergences') || '[]');
-      if (Array.isArray(many)) {
-        for (const item of many) candidates.push(item);
-      }
-    } catch {}
-    for (let i = candidates.length - 1; i >= 0; i -= 1) {
-      const item = candidates[i];
-      const itemLabel = String(item?.replayLabel ?? '').trim().toLowerCase();
-      const move = Number(item?.move ?? NaN);
-      if (itemLabel === normalized && Number.isFinite(move)) {
-        return move;
-      }
-    }
-    return null;
+    const item = this.getLatestDivergenceSnapshot(label);
+    const itemLabel = String(item?.replayLabel ?? '').trim().toLowerCase();
+    const move = Number(item?.move ?? NaN);
+    return itemLabel === normalized && Number.isFinite(move) ? move : null;
   }
 
   replayFixedEntry(label: string): void {
@@ -2269,7 +2259,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       const parsed = JSON.parse(raw);
       console.log('AI divergences:', parsed);
     } finally {
-      this.clearDivergences();
+      this.clearDivergences(true);
       console.log('AI divergences cleared.');
     }
   }
@@ -3380,14 +3370,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
               wasmMove: replayMove,
               tie: replayTie,
             };
-            const existing = localStorage.getItem('aiDivergences');
-            const list = existing ? JSON.parse(existing) : [];
-            list.push(snapshot);
-            localStorage.setItem('aiDivergences', JSON.stringify(list));
-            localStorage.setItem('aiDivergence', JSON.stringify(snapshot));
-            if (this.aiDebugEnabled) {
-              console.log('Saved divergence snapshot to localStorage (aiDivergences).');
-            }
+            this.persistDivergenceSnapshot(snapshot);
             this.divergenceStatus = `Replay divergence at move ${moveIndex}.`;
             this.divergenceDetails = `Replay=${replayMove ?? 'null'} | TS=${tsMove ?? 'null'}`;
             if (this.autoSaveDivergenceEnabled) {
@@ -3507,14 +3490,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
             wasmMove: other,
             tie: isTie,
           };
-          const existing = localStorage.getItem('aiDivergences');
-          const list = existing ? JSON.parse(existing) : [];
-          list.push(snapshot);
-          localStorage.setItem('aiDivergences', JSON.stringify(list));
-          localStorage.setItem('aiDivergence', JSON.stringify(snapshot));
-          if (this.aiDebugEnabled) {
-            console.log('Saved divergence snapshot to localStorage (aiDivergences).');
-          }
+          this.persistDivergenceSnapshot(snapshot);
           const moveIndex = this.game.getMoveCountSnapshot();
           if (this.pauseOnDivergence && !isTie) {
             const moveIndex = this.game.getMoveCountSnapshot();
