@@ -122,6 +122,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replaySavedMovesStatus = '';
   replayRunMovesStatus = '';
   replayThroughputStatus = '';
+  replayDepthStatus = '';
   runIntegrityStatus = '';
   showRunIntegrityModal = false;
   runIntegrityIssueDetected = false;
@@ -950,6 +951,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.compareEngines = false;
       this.pauseOnDivergence = this.aiComparePause;
     }
+    this.updateParityMode();
   }
 
   get autoBoostPaused(): boolean {
@@ -996,6 +998,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
   }
 
   updateParityMode(): void {
+    if (this.aiEngine === 'ts' && this.spawnMode === 'normal') {
+      this.parityMode = true;
+    }
     if (this.parityMode) {
       this.aiAutoBoostManualOverride = false;
       this.aiBoostStatus = '';
@@ -1008,6 +1013,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   get replayThroughputText(): string | null {
     return this.replayThroughputStatus || null;
+  }
+
+  get replayDepthText(): string | null {
+    return this.replayDepthStatus || null;
   }
 
   clearDivergences(): void {
@@ -2441,6 +2450,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.runIntegrityIssueDetected = false;
     }
     this.lastSpawnMode = this.spawnMode;
+    this.updateParityMode();
   }
 
   private updateShadowRecording(): void {
@@ -3525,7 +3535,17 @@ export class GamePageComponent implements OnInit, OnDestroy {
           }
         }
       } else {
-        nextMove = await this.ai.getMove(board);
+        const tsNormalParityLocked =
+          this.aiEngine === 'ts' &&
+          this.spawnMode === 'normal' &&
+          this.parityMode;
+        if (tsNormalParityLocked) {
+          const tsDepthLimit = this.getTsParityAlignedDepthLimit(board);
+          const tsScores = this.ai.getTsScores(board, tsDepthLimit);
+          nextMove = this.getBestMoveFromScores(tsScores);
+        } else {
+          nextMove = await this.ai.getMove(board);
+        }
       }
       if (this.aiEngine === 'ts' && nextMove && cycleDetected) {
         const tsScores = this.ai.getTsScores(board, this.getTsDepthLimit(board));
@@ -3916,6 +3936,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (this.spawnMode !== 'replay') {
       this.replayRunMovesStatus = '';
       this.replayThroughputStatus = '';
+      this.replayDepthStatus = '';
       return;
     }
     const now = Date.now();
@@ -3931,6 +3952,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         ? `Replay progress: ${currentMoves} / ${savedMoves} moves`
         : `Replay moves: ${currentMoves}`;
     this.updateReplayThroughput(currentMoves);
+    this.updateReplayDepth(currentMoves);
   }
 
   private updateReplayThroughput(currentMoves: number): void {
@@ -3950,6 +3972,36 @@ export class GamePageComponent implements OnInit, OnDestroy {
     )} moves/s`;
     this.replayThroughputLastSampleAt = now;
     this.replayThroughputLastSampleMove = currentMoves;
+  }
+
+  private updateReplayDepth(currentMoves: number): void {
+    const board = this.game.getBoardSnapshot();
+    const currentDepth =
+      this.aiEngine === 'ts'
+        ? this.compareEngines
+          ? this.getTsCompareDepthLimit()
+          : this.getTsDepthLimit(board)
+        : this.aiMindepth;
+    if (this.replayDepthLastSampleMove <= 0) {
+      this.replayDepthLastSampleMove = currentMoves;
+      this.replayDepthStatus = `Replay depth: current ${currentDepth} | avg ${currentDepth.toFixed(
+        2
+      )}`;
+      return;
+    }
+    const moveDelta = currentMoves - this.replayDepthLastSampleMove;
+    if (moveDelta > 0) {
+      this.replayDepthWeightedSum += currentDepth * moveDelta;
+      this.replayDepthWeightedMoves += moveDelta;
+      this.replayDepthLastSampleMove = currentMoves;
+    }
+    const avgDepth =
+      this.replayDepthWeightedMoves > 0
+        ? this.replayDepthWeightedSum / this.replayDepthWeightedMoves
+        : currentDepth;
+    this.replayDepthStatus = `Replay depth: current ${currentDepth} | avg ${avgDepth.toFixed(
+      2
+    )}`;
   }
 
   private tryBoostedMove(board: Board, initialMove: Direction): Direction | null {
@@ -4042,6 +4094,16 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return Math.min(Math.max(2, depthCap), Math.max(2, distinct.size - 2));
   }
 
+  private getTsParityAlignedDepthLimit(board: Board): number {
+    const distinct = new Set<number>();
+    for (const row of board) {
+      for (const cell of row) {
+        if (cell > 0) distinct.add(cell);
+      }
+    }
+    return Math.max(2, this.aiMindepth, distinct.size - 2);
+  }
+
   private getTsCompareDepthLimit(): number {
     const board = this.game.getBoardSnapshot();
     const distinct = new Set<number>();
@@ -4052,6 +4114,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
     return Math.max(2, this.aiMindepth, distinct.size - 2);
   }
+
+  private replayDepthWeightedSum = 0;
+  private replayDepthWeightedMoves = 0;
+  private replayDepthLastSampleMove = 0;
 
   updateAiSpeed(): void {
     if (this.aiSpeedMs < 50) {
@@ -4229,7 +4295,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
         run.moves !== effectiveMovesToLog ||
         run.maxTile !== maxTile ||
         run.engine !== loggedEngine ||
-        run.gameMode !== runMode
+        run.gameMode !== runMode ||
+        run.compare !== this.compareEngines ||
+        run.parity !== this.parityMode
       ) {
         return false;
       }
@@ -4369,8 +4437,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.replayCheckpointArmed = false;
     this.replayLastStopOrigin = 'system';
     this.replayThroughputStatus = '';
+    this.replayDepthStatus = '';
     this.replayThroughputLastSampleAt = 0;
     this.replayThroughputLastSampleMove = 0;
+    this.replayDepthWeightedSum = 0;
+    this.replayDepthWeightedMoves = 0;
+    this.replayDepthLastSampleMove = 0;
     this.aiAutoBoosted = false;
     this.aiAutoBoostLocked = false;
     this.aiAutoBoostManualOverride = false;
@@ -4429,8 +4501,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.replayCheckpointArmed = false;
     this.replayLastStopOrigin = 'system';
     this.replayThroughputStatus = '';
+    this.replayDepthStatus = '';
     this.replayThroughputLastSampleAt = 0;
     this.replayThroughputLastSampleMove = 0;
+    this.replayDepthWeightedSum = 0;
+    this.replayDepthWeightedMoves = 0;
+    this.replayDepthLastSampleMove = 0;
     this.aiGameOverHandled = false;
     this.aiPausedForNav = false;
     this.divergenceStatus = '';

@@ -348,6 +348,7 @@ export class RunHistoryComponent implements OnInit {
   }
 
   getCompareDisplay(run: RunSummary): 'yes' | 'no' | 'N/A' {
+    if (run.gameMode === 'normal') return 'N/A';
     if (run.engine === 'wasm') return 'N/A';
     return this.formatBinaryFlag(run.compare);
   }

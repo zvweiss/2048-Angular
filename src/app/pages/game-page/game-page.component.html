@@ -266,7 +266,10 @@
               [(ngModel)]="strictParityMode"
             />
           </label>
-          <label class="ai-speed" *ngIf="aiEngine !== 'wasm'">
+          <label
+            class="ai-speed"
+            *ngIf="aiEngine !== 'wasm' && !(aiEngine === 'ts' && spawnMode === 'normal')"
+          >
             Parity Mode
             <input
               type="checkbox"
@@ -375,6 +378,9 @@
           </div>
           <div class="ai-boost-status" *ngIf="replayThroughputText">
             {{ replayThroughputText }}
+          </div>
+          <div class="ai-boost-status" *ngIf="replayDepthText">
+            {{ replayDepthText }}
           </div>
           <div class="ai-boost-status" *ngIf="replaySavedMovesStatus">
             {{ replaySavedMovesStatus }}
