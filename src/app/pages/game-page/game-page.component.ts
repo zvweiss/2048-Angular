@@ -81,6 +81,8 @@ type ReplayDiagnosticStatusSnapshot = {
   targetMove: number | null;
   currentMove: number | null;
   label: string;
+  resultActive?: boolean;
+  resultText?: string;
   updatedAt: number;
 };
 
@@ -341,6 +343,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.loadDivergenceFixed();
     this.restoreReplayDiagnosticStatus();
     this.clearDivergences();
+    this.recoverReplayCompletionLogIfMissing();
     if (isFreshGame) {
       this.applyDefaultAiConfig();
       this.aiAutoBoosted = false;
@@ -503,6 +506,23 @@ export class GamePageComponent implements OnInit, OnDestroy {
         if (this.aiEngine !== 'ts' && this.aiEngine !== 'wasm') return;
         this.runHistory.updateBestScore(this.aiEngine, score);
       });
+  }
+
+  private recoverReplayCompletionLogIfMissing(): void {
+    if (this.spawnMode !== 'replay') return;
+    const savedMoves = this.game.getMoveLogLength();
+    const moves = this.game.getMoveCountSnapshot();
+    if (savedMoves <= 0 || moves < savedMoves) return;
+    const replayLabel = this.spawnLabel || this.game.getSpawnLabel();
+    const state = this.ensureRunLoggedIfMissing(
+      'stop',
+      'replay',
+      replayLabel,
+      'Consumed all moves'
+    );
+    if (state === 'added' || state === 'existing') {
+      this.runHistory.refreshRuns();
+    }
   }
 
   ngOnDestroy(): void {
@@ -1076,6 +1096,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
       !this.replayDataMissingActive &&
       !this.replayDiagnosticActive
     );
+  }
+
+  get showReplayDiagnosticStatusBanner(): boolean {
+    if (this.replayDiagnosticActive) return false;
+    return this.replayDiagnosticState !== 'idle' || !!this.replayDiagnosticStatus;
   }
 
   clearDivergences(hard = false): void {
@@ -1653,6 +1678,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.clearReplayDiagnosticUiState(true, true);
   }
 
+  dismissReplayDiagnosticStatus(): void {
+    this.clearReplayDiagnosticUiState(false, true);
+  }
+
   async copyReplayDiagnosticResult(): Promise<void> {
     if (!this.replayDiagnosticResultText) return;
     try {
@@ -1724,6 +1753,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
       targetMove: this.replayDiagnosticTargetMove,
       currentMove: this.replayDiagnosticCurrentMove,
       label: this.replayDiagnosticTargetLabel,
+      resultActive: this.replayDiagnosticResultActive,
+      resultText: this.replayDiagnosticResultText,
       updatedAt: Date.now(),
     };
     localStorage.setItem(
@@ -1745,6 +1776,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.replayDiagnosticTargetMove = snapshot.targetMove ?? null;
       this.replayDiagnosticCurrentMove = snapshot.currentMove ?? null;
       this.replayDiagnosticTargetLabel = snapshot.label ?? '';
+      this.replayDiagnosticResultActive = !!snapshot.resultActive;
+      this.replayDiagnosticResultText = snapshot.resultText ?? '';
     } catch {
       localStorage.removeItem(this.replayDiagnosticStatusStorageKey);
     }
