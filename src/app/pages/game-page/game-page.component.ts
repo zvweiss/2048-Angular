@@ -59,6 +59,7 @@ type ReplayDiagnosticSnapshot = {
   tsMove?: string;
   replayMove?: string;
   tsDelta?: number;
+  attempt?: number;
 };
 
 type ReplayDiagnosticReport = {
@@ -1584,10 +1585,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.updateAiCompare();
 
       snapshots.push(
-        await this.runReplayDiagnosticPhase('non-strict', false)
+        await this.runReplayDiagnosticPhaseWithRetry('non-strict', false)
       );
       if (!this.replayDiagnosticAbort) {
-        snapshots.push(await this.runReplayDiagnosticPhase('strict', true));
+        snapshots.push(
+          await this.runReplayDiagnosticPhaseWithRetry('strict', true)
+        );
       }
 
       const finishedAt = Date.now();
@@ -1850,6 +1853,43 @@ export class GamePageComponent implements OnInit, OnDestroy {
     };
   }
 
+  private async runReplayDiagnosticPhaseWithRetry(
+    phase: 'non-strict' | 'strict',
+    strict: boolean
+  ): Promise<ReplayDiagnosticSnapshot> {
+    const maxAttempts = 2;
+    let last: ReplayDiagnosticSnapshot | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (this.replayDiagnosticAbort) break;
+      this.replayDiagnosticStatus =
+        attempt === 1
+          ? `Preparing ${phase} replay @ N-1...`
+          : `Retrying ${phase} replay @ N-1 (attempt ${attempt}/${maxAttempts})...`;
+      this.persistReplayDiagnosticStatus();
+      const snapshot = await this.runReplayDiagnosticPhase(phase, strict);
+      snapshot.attempt = attempt;
+      last = snapshot;
+      if (!this.shouldRetryReplayDiagnosticSnapshot(snapshot)) {
+        return snapshot;
+      }
+    }
+    return (
+      last ?? {
+        phase,
+        stop: 'unknown',
+        moveCount: this.game.getMoveCountSnapshot(),
+        replayStopReason: this.game.getReplayStopReason(),
+      }
+    );
+  }
+
+  private shouldRetryReplayDiagnosticSnapshot(
+    snapshot: ReplayDiagnosticSnapshot
+  ): boolean {
+    if (this.replayDiagnosticAbort) return false;
+    return snapshot.stop === 'unknown' || snapshot.stop === 'timeout';
+  }
+
   private async waitForReplayDiagnosticStop(
     timeoutMs: number,
     baselineDivergenceSignature: string | null,
@@ -1884,7 +1924,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         !this.aiRunning &&
         Number.isFinite(targetMove) &&
         targetMove !== null &&
-        this.replayDiagnosticCurrentMove === targetMove
+        this.replayDiagnosticCurrentMove >= targetMove
       ) {
         if (this.replayParityStatus.includes(`Replay tie at move ${targetMove}`)) {
           return 'tie-stop';
@@ -1896,6 +1936,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
           this.replayParityStatus.includes(`Replay divergence at move ${targetMove}`)
         ) {
           return 'diverged';
+        }
+        if (this.replayDiagnosticCurrentMove > targetMove) {
+          return 'passed-checkpoint';
         }
       }
       if (!this.aiRunning) return 'unknown';
@@ -1965,7 +2008,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
     ];
     for (const snapshot of report.snapshots) {
       lines.push(
-        `[${snapshot.phase}] stop=${snapshot.stop} move=${snapshot.moveCount} replayStopReason=${snapshot.replayStopReason ?? ''}`
+        `[${snapshot.phase}] stop=${snapshot.stop} move=${snapshot.moveCount} replayStopReason=${snapshot.replayStopReason ?? ''}${
+          snapshot.attempt && snapshot.attempt > 1
+            ? ` attempt=${snapshot.attempt}`
+            : ''
+        }`
       );
       if (typeof snapshot.divergenceMove === 'number') {
         lines.push(
