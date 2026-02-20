@@ -1020,6 +1020,63 @@ export class GamePageComponent implements OnInit, OnDestroy {
     return this.replayDepthStatus || null;
   }
 
+  get guidedNextStepMessage(): string | null {
+    if (this.replayDiagnosticActive) return null;
+    if (this.spawnMode !== 'replay') return null;
+    if (this.replayDataMissingActive) {
+      return 'Replay data missing. Select a valid recording and save spawns first.';
+    }
+    if (this.replayCheckpointLoading) {
+      return 'Loading replay checkpoint. Wait for it to finish before clicking Run/Stop.';
+    }
+    if (this.aiRunning) return null;
+    if (this.replayCheckpointArmed) {
+      return 'Replay @ N-1 checkpoint loaded. Click Run/Stop to continue from N-1.';
+    }
+    const status = this.replayParityStatus || '';
+    if (
+      status.includes('Replay parity mismatch at move') ||
+      status.includes('Replay divergence at move')
+    ) {
+      return 'Replay divergence detected. Copy backlog block, then run Replay @ N-1 and Run Diagnostic.';
+    }
+    if (status.includes('Replay tie at move')) {
+      return 'Replay tie detected. Run Diagnostic for this backlog item.';
+    }
+    const savedMoves = this.game.getMoveLogLength();
+    const moves = this.game.getMoveCountSnapshot();
+    if (savedMoves > 0 && moves >= savedMoves) {
+      return 'Replay consumed all moves. Review Runs and continue with your next baseline/strict check.';
+    }
+    if (savedMoves > 0 && moves > 0 && moves < savedMoves) {
+      return 'Replay is paused. Click Run/Stop to continue or Abandon Run.';
+    }
+    return null;
+  }
+
+  get showGuidedCopyBacklogAction(): boolean {
+    return !!this.getLatestDivergenceSnapshot();
+  }
+
+  get showGuidedReplayNMinus1Action(): boolean {
+    return this.canReplayFromDivergenceCheckpoint();
+  }
+
+  get showGuidedRunDiagnosticAction(): boolean {
+    return this.canRunReplayDiagnostic();
+  }
+
+  get showGuidedContinueAction(): boolean {
+    return (
+      this.spawnMode === 'replay' &&
+      this.replayCheckpointArmed &&
+      !this.aiRunning &&
+      !this.gameOverActive &&
+      !this.replayDataMissingActive &&
+      !this.replayDiagnosticActive
+    );
+  }
+
   clearDivergences(hard = false): void {
     if (hard) {
       localStorage.removeItem('aiDivergences');

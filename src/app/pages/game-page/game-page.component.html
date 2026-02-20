@@ -105,6 +105,41 @@
             <button type="button" (click)="cancelReplayDiagnostic()">Cancel Diagnostic</button>
           </div>
         </div>
+        <div class="ai-run-banner" *ngIf="guidedNextStepMessage">
+          <div>{{ guidedNextStepMessage }}</div>
+          <div class="divergence-entry-actions">
+            <button
+              type="button"
+              (click)="copyDivergenceSnapshot()"
+              *ngIf="showGuidedCopyBacklogAction"
+            >
+              Copy Backlog Block
+            </button>
+            <button
+              type="button"
+              (click)="replayFromDivergenceCheckpoint()"
+              *ngIf="showGuidedReplayNMinus1Action"
+            >
+              Replay &#64; N-1
+            </button>
+            <button
+              type="button"
+              (click)="runReplayDiagnosticFromLatestDivergence()"
+              *ngIf="showGuidedRunDiagnosticAction"
+              [disabled]="replayDiagnosticActive"
+            >
+              Run Diagnostic
+            </button>
+            <button
+              type="button"
+              (click)="toggleAiRun()"
+              *ngIf="showGuidedContinueAction"
+              [disabled]="gameOverActive || isRecordingLocked || replayDataMissingActive || replayCheckpointLoading || replayDiagnosticActive"
+            >
+              Continue Replay
+            </button>
+          </div>
+        </div>
         <details class="divergence-panel" [open]="divergenceBacklog.length > 0">
           <summary class="collapse-summary">Divergence/tie backlog ({{ divergenceBacklog.length }})</summary>
           <div class="divergence-backlog">
