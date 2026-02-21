@@ -3349,6 +3349,8 @@ export class GamePageComponent implements OnInit, OnDestroy {
               ? exactTieAccepted
               : bestMoves.has(replayMove);
             if (tieAccepted) {
+              // Treat accepted ties as replay matches in both non-strict and strict.
+              replayMatch = true;
               this.replayParityStatus =
                 `Replay tie accepted at move ${moveIndex} (selected=${replayMove}, tsDelta=${tieDeltaText}).`;
               this.tiePauseStatus = '';
