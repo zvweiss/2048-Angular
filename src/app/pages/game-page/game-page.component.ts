@@ -3297,8 +3297,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
               const shouldAdoptNoCacheDecision =
                 Number.isFinite(cachedGap) &&
                 Number.isFinite(noCacheReplaySupport) &&
-                cachedGap <= 192 &&
-                noCacheReplaySupport >= 40;
+                (
+                  (cachedGap <= 32 && noCacheReplaySupport >= 2) ||
+                  (cachedGap <= 192 && noCacheReplaySupport >= 40)
+                );
               if (shouldAdoptNoCacheDecision) {
                 tsScores = tsScoresNoCacheDecision;
                 tsMove = tsNoCacheMove;
