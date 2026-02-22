@@ -136,6 +136,22 @@ export function computeBitboardCppScores(
   return scores;
 }
 
+export function computeBitboardCppDirectionScore(
+  board: Board,
+  direction: Direction,
+  depthLimit?: number,
+  options: { useCache?: boolean } = {}
+): number {
+  ensureTables();
+  const rows = boardToRows(board);
+  const limit = depthLimit ?? Math.max(3, countDistinctExps(rows) - 2);
+  const useCache = options.useCache ?? true;
+  const move = applyMove(rows, direction);
+  if (!move.moved) return Number.NEGATIVE_INFINITY;
+  const state = createEvalState(limit, 0, useCache);
+  return scoreTilechooseNode(state, move.rows, 1.0);
+}
+
 export function computeBestMoveBitboardAiJs(
   board: Board,
   options: BitboardAiJsOptions = {}

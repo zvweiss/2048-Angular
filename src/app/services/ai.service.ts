@@ -6,6 +6,7 @@ import {
   boardToRows,
   computeBestMoveBitboard,
   computeBitboardAiJsScores,
+  computeBitboardCppDirectionScore,
   computeBitboardCppScores,
   computeBestMoveBitboardAiJs,
   computeBestMoveBitboardCpp,
@@ -21,8 +22,21 @@ export class AiService {
   private tsConfig = { depthCap: 4, timeBudgetMs: 250 };
   private engine: AiEngine = 'ts';
   private debugAi = false;
+  private tsWorkerCount = 1;
+  private tsWorkers: Worker[] = [];
+  private tsWorkerNext = 0;
+  private tsWorkerRequestId = 0;
+  private tsWorkerResolvers = new Map<number, (score: number) => void>();
+  private tsWorkerRejecters = new Map<number, (error: unknown) => void>();
 
-  constructor(private wrkr: WrkrService) {}
+  constructor(private wrkr: WrkrService) {
+    try {
+      const stored = Number(localStorage.getItem('tsWorkerCount') || '1');
+      this.setTsWorkerCount(stored);
+    } catch {
+      this.setTsWorkerCount(1);
+    }
+  }
 
   setEngine(engine: AiEngine): void {
     this.engine = engine;
@@ -34,6 +48,20 @@ export class AiService {
 
   setDebugAi(enabled: boolean): void {
     this.debugAi = enabled;
+  }
+
+  setTsWorkerCount(count: number): void {
+    const nextCount = Math.max(1, Math.min(4, Math.floor(count || 1)));
+    if (this.tsWorkerCount === nextCount) return;
+    this.tsWorkerCount = nextCount;
+    try {
+      localStorage.setItem('tsWorkerCount', String(this.tsWorkerCount));
+    } catch {}
+    this.teardownTsWorkers();
+  }
+
+  getTsWorkerCount(): number {
+    return this.tsWorkerCount;
   }
 
   getWrkrConfig(): { mindepth: number } {
@@ -120,10 +148,12 @@ export class AiService {
       const depthCap = Math.max(2, this.tsConfig.depthCap);
       const depthLimit = Math.min(depthCap, distinctDepth);
       const move =
-        computeBestMoveBitboardCpp(board, {
-          maxDepth: depthLimit,
-          timeBudgetMs: this.tsConfig.timeBudgetMs,
-        }) ?? null;
+        this.tsWorkerCount > 1
+          ? await this.getTsMoveParallel(board, depthLimit)
+          : computeBestMoveBitboardCpp(board, {
+              maxDepth: depthLimit,
+              timeBudgetMs: this.tsConfig.timeBudgetMs,
+            });
       if (this.debugAi) {
         const scores = computeBitboardCppScores(board, depthLimit);
         console.log(
@@ -170,6 +200,109 @@ export class AiService {
 
     if (bestMoves.length === 0) return null;
     return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  }
+
+  private async getTsMoveParallel(
+    board: Board,
+    depthLimit: number
+  ): Promise<Direction | null> {
+    const rows = boardToRows(board);
+    const directions: Direction[] = ['up', 'down', 'left', 'right'];
+    const candidates = directions.filter(
+      (direction) => applyMove(rows, direction).moved
+    );
+    if (candidates.length === 0) return null;
+    const scores = await Promise.all(
+      candidates.map(async (direction) => ({
+        direction,
+        score: await this.scoreDirectionWithTsWorker(board, direction, depthLimit),
+      }))
+    );
+    let bestScore = Number.NEGATIVE_INFINITY;
+    let bestMoves: Direction[] = [];
+    for (const entry of scores) {
+      if (entry.score > bestScore) {
+        bestScore = entry.score;
+        bestMoves = [entry.direction];
+      } else if (entry.score === bestScore) {
+        bestMoves.push(entry.direction);
+      }
+    }
+    if (bestMoves.length === 0) return null;
+    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  }
+
+  private async scoreDirectionWithTsWorker(
+    board: Board,
+    direction: Direction,
+    depthLimit: number
+  ): Promise<number> {
+    try {
+      const worker = this.getNextTsWorker();
+      if (!worker) {
+        return computeBitboardCppDirectionScore(board, direction, depthLimit);
+      }
+      const requestId = ++this.tsWorkerRequestId;
+      const scorePromise = new Promise<number>((resolve, reject) => {
+        this.tsWorkerResolvers.set(requestId, resolve);
+        this.tsWorkerRejecters.set(requestId, reject);
+      });
+      worker.postMessage({
+        id: requestId,
+        board,
+        direction,
+        maxDepth: depthLimit,
+      });
+      return await scorePromise;
+    } catch {
+      return computeBitboardCppDirectionScore(board, direction, depthLimit);
+    }
+  }
+
+  private getNextTsWorker(): Worker | null {
+    if (typeof Worker === 'undefined' || this.tsWorkerCount <= 1) return null;
+    this.ensureTsWorkers();
+    if (this.tsWorkers.length === 0) return null;
+    const worker = this.tsWorkers[this.tsWorkerNext % this.tsWorkers.length];
+    this.tsWorkerNext = (this.tsWorkerNext + 1) % this.tsWorkers.length;
+    return worker;
+  }
+
+  private ensureTsWorkers(): void {
+    if (this.tsWorkers.length > 0 || typeof Worker === 'undefined') return;
+    for (let i = 0; i < this.tsWorkerCount; i++) {
+      const workerUrl = new URL(
+        '../workers/ts-direction-score.worker',
+        import.meta.url
+      );
+      const worker = new Worker(workerUrl);
+      worker.onmessage = (event: MessageEvent<{ id: number; score: number }>) => {
+        const { id, score } = event.data;
+        const resolve = this.tsWorkerResolvers.get(id);
+        if (resolve) resolve(score);
+        this.tsWorkerResolvers.delete(id);
+        this.tsWorkerRejecters.delete(id);
+      };
+      worker.onerror = () => {
+        for (const reject of this.tsWorkerRejecters.values()) {
+          reject(new Error('TS worker error'));
+        }
+        this.tsWorkerResolvers.clear();
+        this.tsWorkerRejecters.clear();
+        this.teardownTsWorkers();
+      };
+      this.tsWorkers.push(worker);
+    }
+  }
+
+  private teardownTsWorkers(): void {
+    for (const worker of this.tsWorkers) {
+      worker.terminate();
+    }
+    this.tsWorkers = [];
+    this.tsWorkerNext = 0;
+    this.tsWorkerResolvers.clear();
+    this.tsWorkerRejecters.clear();
   }
 
   private findFirstValidMove(board: Board): Direction | null {

@@ -118,6 +118,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   aiMindepth = 2;
   aiDepthCap = 4;
   aiTimeBudgetMs = 250;
+  tsWorkerCount = 1;
   showDebugControls = true;
   aiBoostStatus = '';
   private aiBoostStatusTimeout: number | null = null;
@@ -332,6 +333,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     const tsConfig = this.ai.getTsConfig();
     this.aiDepthCap = tsConfig.depthCap;
     this.aiTimeBudgetMs = tsConfig.timeBudgetMs;
+    this.tsWorkerCount = this.ai.getTsWorkerCount();
     this.aiEngine = this.ai.getEngine();
     this.aiDebugEnabled = false;
     this.aiCompareEnabled = false;
@@ -965,6 +967,11 @@ export class GamePageComponent implements OnInit, OnDestroy {
     }
   }
 
+  updateTsWorkerCount(): void {
+    this.tsWorkerCount = Math.max(1, Math.min(4, Math.floor(this.tsWorkerCount || 1)));
+    this.ai.setTsWorkerCount(this.tsWorkerCount);
+  }
+
   updateAiEngine(): void {
     this.ai.setEngine(this.aiEngine);
     if (this.spawnMode === 'record' && this.aiEngine !== 'wasm') {
@@ -1382,18 +1389,30 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.dismissBacklogDeleteConfirm();
   }
 
-  async copyDivergenceSnapshot(): Promise<void> {
-    const snapshot = this.getLatestDivergenceSnapshot();
+  async copyDivergenceSnapshot(entry?: DivergenceEntry): Promise<void> {
+    const baseLabel = entry ? this.getBacklogBaseLabel(String(entry.label ?? '')) : '';
+    const entryMove = entry ? this.extractReplayMoveFromNote(String(entry.note ?? '')) : null;
+    const snapshot =
+      (baseLabel && entryMove !== null
+        ? this.getLatestDivergenceSnapshot(baseLabel, entryMove)
+        : null) ??
+      (baseLabel ? this.getLatestDivergenceSnapshot(baseLabel) : null) ??
+      this.getLatestDivergenceSnapshot();
     if (!snapshot) {
       this.spawnStatus = 'No divergence snapshot found.';
       return;
     }
     try {
       const payload = {
-        label: this.spawnLabel || this.game.getSpawnLabel() || '',
+        label:
+          String(snapshot?.replayLabel ?? '').trim() ||
+          baseLabel ||
+          this.spawnLabel ||
+          this.game.getSpawnLabel() ||
+          '',
         createdAt: new Date().toISOString(),
         ...snapshot,
-        note: this.divergenceStatus || '',
+        note: entry ? String(entry.note ?? '').trim() : this.divergenceStatus || '',
       };
       const board = Array.isArray(payload.board)
         ? payload.board
@@ -2407,6 +2426,51 @@ export class GamePageComponent implements OnInit, OnDestroy {
       this.clearDivergences(true);
       console.log('AI divergences cleared.');
     }
+  }
+
+  createTestDivergenceArtifact(): void {
+    if (this.aiRunning) {
+      this.spawnStatus = 'Stop AI before creating a test divergence artifact.';
+      return;
+    }
+    const board = this.game.getBoardSnapshot();
+    const move = Math.max(2, this.game.getMoveCountSnapshot());
+    const savedMoves = this.game.getMoveLogLength();
+    const replayLabel = this.resolveReplayLabel() || 'test-replay';
+    const tsDepthUsed = this.getTsCompareDepthLimit();
+    const tsScores = this.ai.getTsScores(board, tsDepthUsed);
+    const tsMove =
+      tsScores.length > 0
+        ? tsScores.reduce((best, entry) =>
+            entry.score > best.score ? entry : best
+          ).direction
+        : null;
+    const wasmMove: Direction | null =
+      tsMove === 'up' ? 'right' : tsMove === 'right' ? 'down' : 'up';
+    const snapshot = {
+      move,
+      replayLabel,
+      board,
+      tsScores,
+      tsDepthUsed,
+      tsMove,
+      wasmMove,
+      tie: false,
+      synthetic: true,
+      note: 'Synthetic divergence for AP-003 persistence validation.',
+      tsReplayScoreDelta: 1,
+    };
+    this.persistDivergenceSnapshot(snapshot);
+    const note =
+      savedMoves > 0
+        ? `Replay divergence at move ${move}/${savedMoves} (synthetic AP-003)`
+        : `Replay divergence at move ${move} (synthetic AP-003)`;
+    this.addDivergenceBacklog(replayLabel, note);
+    this.moveFixedToBacklog(replayLabel, note);
+    this.divergenceStatus = `Replay divergence at move ${move}.`;
+    this.divergenceDetails = `Replay=${wasmMove ?? 'null'} | TS=${tsMove ?? 'null'} (synthetic)`;
+    this.replayParityStatus = `Replay parity mismatch at move ${move}`;
+    this.spawnStatus = 'Created synthetic divergence artifact for AP-003.';
   }
 
   updateSpawnMode(): void {

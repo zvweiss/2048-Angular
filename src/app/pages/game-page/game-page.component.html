@@ -188,6 +188,9 @@
                 <span class="divergence-note">{{ entry.note }}</span>
               </div>
               <div class="divergence-entry-actions">
+                <button type="button" (click)="copyDivergenceSnapshot(entry)">
+                  Copy Backlog Block
+                </button>
                 <button
                   type="button"
                   (click)="replayBacklogEntryCheckpoint(entry)"
@@ -385,6 +388,9 @@
               : 'Saved spawns do not exist' }}
           </div>
           <div class="ai-spawn-actions" *ngIf="aiDebugEnabled">
+            <button type="button" (click)="createTestDivergenceArtifact()">
+              Create Test Divergence
+            </button>
             <button type="button" (click)="dumpDivergences()">Dump Divergences</button>
           </div>
         </div>
@@ -410,6 +416,17 @@
               [(ngModel)]="aiDepthCap"
               (input)="updateDepthCap()"
               [disabled]="parityMode || spawnMode === 'replay'"
+            />
+          </label>
+          <label class="ai-speed">
+            <span class="ai-label">TS Workers ({{ tsWorkerCount }})</span>
+            <input
+              type="range"
+              min="1"
+              max="4"
+              step="1"
+              [(ngModel)]="tsWorkerCount"
+              (input)="updateTsWorkerCount()"
             />
           </label>
           <div class="ai-auto-boost-toggle" *ngIf="autoBoostPaused">

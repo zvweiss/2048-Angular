@@ -29,7 +29,7 @@ Build a one-click parity workflow that removes manual DevTools snippets and redu
   - Keeps diagnostic report copyable after navigation until explicitly cleared.
 
 ### AP-003 Stable Divergence Artifact Persistence
-- Status: implemented, pending validation
+- Status: validated
 - Goal: guarantee divergence artifacts are persisted before any UI state reset.
 - Deliverable: robust write path for `aiDivergence` and `aiDivergences`.
 - Acceptance:
@@ -56,11 +56,10 @@ Build a one-click parity workflow that removes manual DevTools snippets and redu
   - Recovers missing replay completion log on init when replay already consumed all moves.
 
 ## Validation Queue (Mark Fixed After Pass)
-1. AP-003
-2. AP-004
-3. AP-001
-4. AP-002
-5. AP-005
+1. AP-004
+2. AP-001
+3. AP-002
+4. AP-005
 
 ## Notes
 - Keep dedupe behavior for replay rows unless explicitly changed.
