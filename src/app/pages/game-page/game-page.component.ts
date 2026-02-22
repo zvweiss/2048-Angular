@@ -126,6 +126,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
   replayRunMovesStatus = '';
   replayThroughputStatus = '';
   replayDepthStatus = '';
+  normalThroughputStatus = '';
   runIntegrityStatus = '';
   showRunIntegrityModal = false;
   runIntegrityIssueDetected = false;
@@ -198,6 +199,9 @@ export class GamePageComponent implements OnInit, OnDestroy {
   private readonly replayDiagnosticStatusStorageKey = 'replayDiagnosticStatus';
   private replayThroughputLastSampleAt = 0;
   private replayThroughputLastSampleMove = 0;
+  private normalThroughputLastSampleAt = 0;
+  private normalThroughputLastSampleMove = 0;
+  private normalThroughputCurrentMps: number | null = null;
   private suppressReplayStopPrompt = false;
   replayCompletedMessage = '';
   replayDivergedActive = false;
@@ -1039,6 +1043,10 @@ export class GamePageComponent implements OnInit, OnDestroy {
 
   get replayDepthText(): string | null {
     return this.replayDepthStatus || null;
+  }
+
+  get normalThroughputText(): string | null {
+    return this.normalThroughputStatus || null;
   }
 
   get guidedNextStepMessage(): string | null {
@@ -3692,6 +3700,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
         return;
       }
       this.game.move(nextMove);
+      this.refreshNormalThroughputUi();
       this.lastRunMode = this.spawnMode;
       if (this.aiEngine === 'ts' || this.aiEngine === 'wasm') {
         this.runHistory.updateBestScore(
@@ -3802,6 +3811,7 @@ export class GamePageComponent implements OnInit, OnDestroy {
     if (reason === 'stop') {
       this.batchRemaining = this.batchTotal;
     }
+    this.refreshNormalThroughputUi();
 
     if (reason === 'stop' && this.spawnMode === 'replay') {
       const savedMoves = this.game.getMoveLogLength();
@@ -4070,6 +4080,47 @@ export class GamePageComponent implements OnInit, OnDestroy {
         : `Replay moves: ${currentMoves}`;
     this.updateReplayThroughput(currentMoves);
     this.updateReplayDepth(currentMoves);
+  }
+
+  private refreshNormalThroughputUi(): void {
+    if (this.spawnMode !== 'normal') {
+      this.normalThroughputStatus = '';
+      return;
+    }
+    const currentMoves = this.game.getMoveCountSnapshot();
+    const now = Date.now();
+    if (this.normalThroughputLastSampleAt <= 0) {
+      this.normalThroughputLastSampleAt = now;
+      this.normalThroughputLastSampleMove = currentMoves;
+      this.normalThroughputCurrentMps = null;
+    } else {
+      const elapsedMs = now - this.normalThroughputLastSampleAt;
+      const moveDelta = currentMoves - this.normalThroughputLastSampleMove;
+      if (elapsedMs >= 400 && moveDelta >= 0) {
+        this.normalThroughputCurrentMps = (moveDelta * 1000) / elapsedMs;
+        this.normalThroughputLastSampleAt = now;
+        this.normalThroughputLastSampleMove = currentMoves;
+      }
+    }
+    const runningMoves = this.aiRunning ? currentMoves - this.aiRunStartMoves : 0;
+    const movesSinceStart = this.aiRunAccumulatedMoves + runningMoves;
+    const runningMs =
+      this.aiRunning && this.aiRunLastStartedAt !== null
+        ? now - this.aiRunLastStartedAt
+        : 0;
+    const durationMs = this.aiRunAccumulatedMs + runningMs;
+    if (movesSinceStart <= 0 || durationMs <= 0) {
+      this.normalThroughputStatus = '';
+      return;
+    }
+    const avgMovesPerSecond = (movesSinceStart * 1000) / durationMs;
+    if (this.normalThroughputCurrentMps !== null) {
+      this.normalThroughputStatus =
+        `Run speed: ${this.normalThroughputCurrentMps.toFixed(1)} moves/s | ` +
+        `avg ${avgMovesPerSecond.toFixed(1)}`;
+      return;
+    }
+    this.normalThroughputStatus = `Run speed: avg ${avgMovesPerSecond.toFixed(1)} moves/s`;
   }
 
   private updateReplayThroughput(currentMoves: number): void {
@@ -4555,8 +4606,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.replayLastStopOrigin = 'system';
     this.replayThroughputStatus = '';
     this.replayDepthStatus = '';
+    this.normalThroughputStatus = '';
     this.replayThroughputLastSampleAt = 0;
     this.replayThroughputLastSampleMove = 0;
+    this.normalThroughputLastSampleAt = 0;
+    this.normalThroughputLastSampleMove = 0;
+    this.normalThroughputCurrentMps = null;
     this.replayDepthWeightedSum = 0;
     this.replayDepthWeightedMoves = 0;
     this.replayDepthLastSampleMove = 0;
@@ -4619,8 +4674,12 @@ export class GamePageComponent implements OnInit, OnDestroy {
     this.replayLastStopOrigin = 'system';
     this.replayThroughputStatus = '';
     this.replayDepthStatus = '';
+    this.normalThroughputStatus = '';
     this.replayThroughputLastSampleAt = 0;
     this.replayThroughputLastSampleMove = 0;
+    this.normalThroughputLastSampleAt = 0;
+    this.normalThroughputLastSampleMove = 0;
+    this.normalThroughputCurrentMps = null;
     this.replayDepthWeightedSum = 0;
     this.replayDepthWeightedMoves = 0;
     this.replayDepthLastSampleMove = 0;

@@ -449,6 +449,9 @@
             {{ aiBoostStatus }}
           </div>
         </ng-container>
+        <div class="ai-boost-status" *ngIf="normalThroughputText">
+          {{ normalThroughputText }}
+        </div>
         <label class="ai-speed">
           <span class="ai-label">Batch Remaining ({{ batchRemaining }})</span>
           <input
