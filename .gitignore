@@ -29,6 +29,8 @@ yarn-error.log
 # .history/*
 
 # Miscellaneous
+.emscripten-cache/
+Coverrsation-with chatGPT/
 /.angular/cache
 .emscripten-cache/
 .sass-cache/
